@@ -161,6 +161,10 @@ changing `clean.py`, rerun steps 3-5 so `app.db` stays in sync:
 python export.py && python clean.py --report && python build_app_db.py
 ```
 
+`verify_scrape.py` checks a finished crawl: every manifest URL scraped exactly once, how
+many rows have each field, names taken from the page, and (with `--old old.sqlite`) what
+changed versus a previous crawl. Run it before the export/clean/build steps.
+
 `check_db.py` prints sample rows from `perfumes.sqlite` for a quick sanity
 check. `db_helper.py` holds the SQLite helpers and URL completion ledger used
 by both scrapers.
