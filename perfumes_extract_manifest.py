@@ -103,7 +103,7 @@ def main():
                     country = COUNTRIES[current_country_index]
                     country_url = urljoin(BASE_URL, "/country/{}.html".format(country))
                     print("[Country] {}".format(country_url), flush=True)
-                    country_tree = client.fetch_tree(country_url)
+                    country_tree = client.fetch_tree(country_url, scroll=True)
 
                     brand_urls = matching_urls(
                         country_tree, country_url, "/designers/", BRAND_PATH
@@ -122,7 +122,7 @@ def main():
                         print("[Designer {}/{}] {}".format(
                             current_brand_index + 1, len(brand_urls), brand_url
                         ), flush=True)
-                        brand_tree = client.fetch_tree(brand_url)
+                        brand_tree = client.fetch_tree(brand_url, scroll=True)
 
                         raw_perfume_hrefs = [
                             href for href in brand_tree.xpath("//a[@href]/@href")
