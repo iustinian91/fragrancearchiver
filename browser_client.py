@@ -16,6 +16,9 @@ IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no nee
 MAX_RATE_LIMIT_RETRIES = 5
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
+SCROLL_STEP_WAIT_MS = 500
+SCROLL_BOTTOM_WAIT_MS = 700
+MAX_SCROLL_STEPS = 40
 HEADLESS = False
 
 
@@ -133,8 +136,50 @@ class BrowserClient:
         )
         sleep(wait_seconds)
 
-    def fetch_tree(self, url, timeout_ms=None):
-        """Navigate, retry HTTP 429 after the required cooldown, and parse HTML."""
+    def _scroll_page_to_load(self):
+        """Gradually scroll a page to trigger lazy-loaded content.
+
+        Stop after reaching the bottom and observing no further page-height
+        growth twice, or after MAX_SCROLL_STEPS to bound the wait.
+        """
+        stable_bottom_checks = 0
+
+        for _step in range(MAX_SCROLL_STEPS):
+            metrics = self.page.evaluate(
+                """() => ({
+                    scrollY: window.scrollY,
+                    viewportHeight: window.innerHeight,
+                    scrollHeight: document.documentElement.scrollHeight
+                })"""
+            )
+
+            at_bottom = (
+                metrics["scrollY"] + metrics["viewportHeight"]
+                >= metrics["scrollHeight"] - 2
+            )
+            if at_bottom:
+                self.page.wait_for_timeout(SCROLL_BOTTOM_WAIT_MS)
+                new_height = self.page.evaluate(
+                    "() => document.documentElement.scrollHeight"
+                )
+                if new_height <= metrics["scrollHeight"]:
+                    stable_bottom_checks += 1
+                    if stable_bottom_checks >= 2:
+                        break
+                else:
+                    stable_bottom_checks = 0
+            else:
+                stable_bottom_checks = 0
+                self.page.evaluate(
+                    "() => window.scrollBy(0, Math.max(400, Math.floor(window.innerHeight * 0.8)))"
+                )
+                self.page.wait_for_timeout(SCROLL_STEP_WAIT_MS)
+
+        # Return to the top so later page operations start from a predictable position.
+        self.page.evaluate("() => window.scrollTo(0, 0)")
+
+    def fetch_tree(self, url, timeout_ms=None, scroll=False):
+        """Navigate, optionally load lazy content, and parse the resulting HTML."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
             response = self.page.goto(
@@ -162,6 +207,9 @@ class BrowserClient:
             if response.status >= 400:
                 detail = "HTTP {} for {}".format(response.status, url)
                 raise RuntimeError(detail)
+
+            if scroll:
+                self._scroll_page_to_load()
 
             return html.fromstring(self.page.content())
         raise RuntimeError(
