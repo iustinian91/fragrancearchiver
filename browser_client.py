@@ -133,8 +133,24 @@ class BrowserClient:
         )
         sleep(wait_seconds)
 
-    def fetch_tree(self, url, timeout_ms=None):
-        """Navigate, retry HTTP 429 after the required cooldown, and parse HTML."""
+    def _wait_for_lazy(self, selector):
+        """Scroll down a screen at a time until `selector` has been drawn by the page's own
+        script, then give it a moment to fill in. Best effort: a page without it (no votes)
+        simply carries on after about ten seconds."""
+        try:
+            for _ in range(20):
+                if self.page.locator(selector).count():
+                    self.page.wait_for_timeout(1500)
+                    return
+                self.page.evaluate("window.scrollBy(0, window.innerHeight)")
+                self.page.wait_for_timeout(500)
+        except PatchrightError:
+            pass
+
+    def fetch_tree(self, url, timeout_ms=None, wait_for=None):
+        """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
+
+        `wait_for` is a CSS selector for content the page fills in after it opens."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
             response = self.page.goto(
@@ -163,6 +179,8 @@ class BrowserClient:
                 detail = "HTTP {} for {}".format(response.status, url)
                 raise RuntimeError(detail)
 
+            if wait_for:
+                self._wait_for_lazy(wait_for)
             return html.fromstring(self.page.content())
         raise RuntimeError(
             "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
