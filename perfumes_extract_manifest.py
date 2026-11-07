@@ -24,6 +24,24 @@ BRAND_PATH = re.compile(r"/designers/[^/]+\.html$", re.IGNORECASE)
 PERFUME_PATH = re.compile(r"/perfume/[^/]+/[^/]+-\d+\.html?$", re.IGNORECASE)
 
 
+def matching_urls(tree, base_url, path_fragment, pattern):
+    """Return unique absolute URLs matching a path pattern.
+
+    Resolve relative hrefs before validating their paths. Fragrantica pages can
+    expose root-relative, path-relative, or absolute links.
+    """
+    urls = []
+    for href in tree.xpath("//a[@href]/@href"):
+        absolute_url = urljoin(base_url, href)
+        parts = urlsplit(absolute_url)
+        if path_fragment not in parts.path:
+            continue
+        if pattern.fullmatch(parts.path):
+            # Drop query strings/fragments so one page has one manifest URL.
+            urls.append("{}://{}{}".format(parts.scheme, parts.netloc, parts.path))
+    return list(dict.fromkeys(urls))
+
+
 def migrate_legacy_manifest():
     """Preserve URL lists written by older versions using manifest.txt names."""
     if TEMP_OUTPUT_PATH.exists():
@@ -87,38 +105,51 @@ def main():
                     print("[Country] {}".format(country_url), flush=True)
                     country_tree = client.fetch_tree(country_url)
 
-                    brand_hrefs = list(dict.fromkeys(
-                        href for href in country_tree.xpath(
-                            "//a[contains(@href, '/designers/')]/@href"
-                        )
-                        if BRAND_PATH.fullmatch(urlsplit(href).path)
-                    ))
+                    brand_urls = matching_urls(
+                        country_tree, country_url, "/designers/", BRAND_PATH
+                    )
 
                     start_brand = brand_index if current_country_index == country_index else 0
-                    if start_brand > len(brand_hrefs):
+                    if start_brand > len(brand_urls):
                         raise ValueError(
                             "Checkpoint designer index {} exceeds {} designers for {}".format(
-                                start_brand, len(brand_hrefs), country
+                                start_brand, len(brand_urls), country
                             )
                         )
 
-                    for current_brand_index in range(start_brand, len(brand_hrefs)):
-                        brand_url = urljoin(BASE_URL, brand_hrefs[current_brand_index])
+                    for current_brand_index in range(start_brand, len(brand_urls)):
+                        brand_url = brand_urls[current_brand_index]
                         print("[Designer {}/{}] {}".format(
-                            current_brand_index + 1, len(brand_hrefs), brand_url
+                            current_brand_index + 1, len(brand_urls), brand_url
                         ), flush=True)
                         brand_tree = client.fetch_tree(brand_url)
 
-                        perfume_hrefs = list(dict.fromkeys(
-                            href for href in brand_tree.xpath(
-                                "//a[contains(@href, '/perfume/')]/@href"
+                        raw_perfume_hrefs = [
+                            href for href in brand_tree.xpath("//a[@href]/@href")
+                            if "/perfume/" in urlsplit(urljoin(brand_url, href)).path
+                        ]
+                        perfume_urls = matching_urls(
+                            brand_tree, brand_url, "/perfume/", PERFUME_PATH
+                        )
+
+                        if not perfume_urls:
+                            try:
+                                page_title = client.page.title().strip()
+                            except Exception:
+                                page_title = "(title unavailable)"
+                            print(
+                                "[No matches] {} | title={!r} | raw perfume links={} | "
+                                "examples={!r}".format(
+                                    brand_url,
+                                    page_title,
+                                    len(raw_perfume_hrefs),
+                                    raw_perfume_hrefs[:5],
+                                ),
+                                flush=True,
                             )
-                            if PERFUME_PATH.fullmatch(urlsplit(href).path)
-                        ))
 
                         added = 0
-                        for perfume_href in perfume_hrefs:
-                            perfume_url = urljoin(BASE_URL, perfume_href)
+                        for perfume_url in perfume_urls:
                             if perfume_url in seen:
                                 continue
                             seen.add(perfume_url)
@@ -126,7 +157,7 @@ def main():
                             added += 1
 
                         output.flush()
-                        if current_brand_index + 1 < len(brand_hrefs):
+                        if current_brand_index + 1 < len(brand_urls):
                             save_progress(current_country_index, current_brand_index + 1)
                         else:
                             save_progress(current_country_index + 1, 0)
