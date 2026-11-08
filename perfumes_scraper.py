@@ -182,6 +182,53 @@ def launch_year(page_title, tree):
     return match.group(1) if match else None
 
 
+LONGEVITY_KEYS = ("poor", "weak", "moderate", "long lasting", "very long lasting")
+SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
+VOTES_READY = ".tw-perf-card"  # the vote cards are drawn by script after the page opens
+
+
+def parse_count(text):
+    """'216' -> 216, '2.6k' -> 2600, '1.2M' -> 1200000. The site abbreviates large counts,
+    so those are approximate (to the nearest hundred or so); None if unreadable."""
+    match = re.fullmatch(r"([\d.,]+)\s*([kKmM]?)", " ".join(str(text).split()))
+    if not match:
+        return None
+    try:
+        number = float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    factor = {"": 1, "k": 1_000, "m": 1_000_000}[match.group(2).lower()]
+    return round(number * factor)
+
+
+def _vote_rows(card):
+    """(label, count) pairs of one vote card, in page order, from the rows below the slider."""
+    rows = []
+    for row in card.xpath(".//div[contains(@class, 'space-y-2')]/div"):
+        spans = [" ".join(t.split()) for t in row.xpath(".//span/text()") if t.strip()]
+        if len(spans) >= 2:
+            rows.append((spans[0], parse_count(spans[1])))
+    return rows
+
+
+def page_votes(tree):
+    """(longevity, sillage) vote counts keyed by the names the database has always used, or
+    None for a card that is missing or does not have the expected number of levels.
+
+    The site's levels are very weak..eternal and intimate..enormous; they are stored by
+    position under the original names (poor..very long lasting, soft..enormous) so existing
+    data and clean.py keep working. A card with no votes at all is stored as None."""
+    found = {}
+    for card in tree.xpath("//*[contains(concat(' ', normalize-space(@class), ' '), ' tw-perf-card ')]"):
+        heading = " ".join(card.xpath(".//span[contains(@class, 'uppercase')]/text()")).strip().lower()
+        for kind, keys in (("longevity", LONGEVITY_KEYS), ("sillage", SILLAGE_KEYS)):
+            rows = _vote_rows(card)
+            if heading == kind and len(rows) == len(keys) and all(c is not None for _, c in rows):
+                votes = {key: str(count) for key, (_, count) in zip(keys, rows)}
+                found[kind] = votes if any(int(v) for v in votes.values()) else None
+    return found.get("longevity"), found.get("sillage")
+
+
 def scrape_perfume(client, url):
     """Fetch and parse one perfume page. Returns (perfume dict, record tuple)."""
     match = PERFUME_URL.search(url)
@@ -190,7 +237,7 @@ def scrape_perfume(client, url):
 
     url_brand = match.group("brand").replace("-", " ")
     url_title = match.group("title").replace("-", " ")
-    tree = client.fetch_tree(url)
+    tree = client.fetch_tree(url, wait_for=VOTES_READY)
 
     names = page_name_candidates(tree)
     page_brand = find_name(names, url_brand)
@@ -219,27 +266,7 @@ def scrape_perfume(client, url):
     main_accords = page_main_accords(tree)
     notes = page_notes(tree)
 
-    # NOTE: on the current site these two vote tables are filled in by script after the page
-    # opens (and only once scrolled into view), so they may come back empty; see the coverage
-    # line the scraper prints when it finishes.
-    longevity_votes = tree.xpath("//table[@class='voteLS long']/tr/td[@class='ndSum']/text()")
-    if len(longevity_votes) >= 5:
-        longevity = {
-            "poor": longevity_votes[0], "weak": longevity_votes[1],
-            "moderate": longevity_votes[2], "long lasting": longevity_votes[3],
-            "very long lasting": longevity_votes[4],
-        }
-    else:
-        longevity = None
-
-    sillage_votes = tree.xpath("//table[@class='voteLS sil']/tr/td[@class='ndSum']/text()")
-    if len(sillage_votes) >= 4:
-        sillage = {
-            "soft": sillage_votes[0], "moderate": sillage_votes[1],
-            "heavy": sillage_votes[2], "enormous": sillage_votes[3],
-        }
-    else:
-        sillage = None
+    longevity, sillage = page_votes(tree)
 
     record = (
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),

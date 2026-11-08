@@ -128,10 +128,14 @@ which is much cheaper to find out here than after a full crawl. Delete
 `scratch.sqlite` afterwards.
 
 Fragrantica redesigned its pages after the original data was collected, so
-`perfumes_scraper.py` reads both layouts (the new one first). Accords and notes
-are in the page HTML and are read from there. Longevity and sillage votes are
-filled in by script after the page opens, so they may come back empty until the
-scraper scrolls and waits for them.
+`perfumes_scraper.py` reads both layouts (the new one first). Accords and notes are in
+the page HTML. Longevity and sillage are drawn by the page's script, so the browser client
+scrolls down until they appear (up to about ten seconds) before reading the page. The site
+shows large counts abbreviated (`2.6k`), so those votes are stored as rounded integers
+(2600). Its levels (very weak..eternal, intimate..enormous) are stored by position under
+the original names (`poor`..`very long lasting`, `soft`..`enormous`). A perfume with no
+votes is stored as missing. `python tests/test_votes.py` checks the parsing against a saved
+copy of the section.
 
 ### Rebuilding the database
 
