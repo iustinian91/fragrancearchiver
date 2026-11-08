@@ -1,6 +1,7 @@
 """Discover perfume URLs with Patchright and maintain a resumable manifest."""
 
 import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
@@ -10,6 +11,7 @@ from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, CloudflareChal
 OUTPUT_PATH = Path("perfumes_manifest.txt")
 TEMP_OUTPUT_PATH = Path("perfumes_manifest.txt.tmp")
 STATE_PATH = Path("perfumes_manifest.state.json")
+EMPTY_PATH = Path("perfumes_manifest.empty.txt")  # designer pages that stayed empty after a retry
 LEGACY_TEMP_PATH = Path("manifest.txt.tmp")
 LEGACY_OUTPUT_PATH = Path("manifest.txt")
 
@@ -22,6 +24,25 @@ COUNTRIES = [
 
 BRAND_PATH = re.compile(r"/designers/[^/]+\.html$", re.IGNORECASE)
 PERFUME_PATH = re.compile(r"/perfume/[^/]+/[^/]+-\d+\.html?$", re.IGNORECASE)
+SITE_HOSTS = {urlsplit(BASE_URL).netloc, urlsplit(BASE_URL).netloc.removeprefix("www.")}
+PERFUME_LINKS = 'a[href*="/perfume/"]'   # what the designer page scroll counts
+BRAND_LINKS = 'a[href*="/designers/"]'
+
+
+def matching_urls(tree, base_url, pattern):
+    """Return unique page URLs whose path matches `pattern`.
+
+    Relative links are resolved against `base_url` first. Only links on the site itself are
+    kept, written with the canonical host and without query string or fragment, so one page
+    always has exactly one manifest URL (www and non-www links would otherwise be two).
+    """
+    urls = []
+    for href in tree.xpath("//a[@href]/@href"):
+        parts = urlsplit(urljoin(base_url, href))
+        if parts.netloc.lower() not in SITE_HOSTS or not pattern.fullmatch(parts.path):
+            continue
+        urls.append(urljoin(BASE_URL, parts.path))
+    return list(dict.fromkeys(urls))
 
 
 def migrate_legacy_manifest():
@@ -37,7 +58,10 @@ def migrate_legacy_manifest():
 
 
 def load_progress():
-    """Return the next country/designer position and URLs already checkpointed."""
+    """Return the next country, the designer URL to resume at (or None), and URLs already saved.
+
+    The position is stored as a designer URL, not an index: the designer list is read from a
+    lazily loaded page and an index could point at a different designer on the next run."""
     migrate_legacy_manifest()
     seen = set()
     if TEMP_OUTPUT_PATH.exists():
@@ -48,26 +72,71 @@ def load_progress():
         with STATE_PATH.open(encoding="utf-8") as state_file:
             state = json.load(state_file)
         country_index = int(state.get("country_index", 0))
-        brand_index = int(state.get("brand_index", 0))
+        brand_url = state.get("brand_url")
+        brand_index = int(state.get("brand_index", 0))   # checkpoints written by older versions
         if not 0 <= country_index <= len(COUNTRIES) or brand_index < 0:
             raise ValueError("Invalid crawl position in {}".format(STATE_PATH))
-        return country_index, brand_index, seen
+        if not TEMP_OUTPUT_PATH.exists() and (country_index or brand_url or brand_index):
+            raise ValueError(
+                "{} has a saved position but {} is missing; restoring the file or "
+                "deleting {} to start over avoids silently skipping countries".format(
+                    STATE_PATH, TEMP_OUTPUT_PATH, STATE_PATH)
+            )
+        return country_index, (brand_url if brand_url else brand_index or None), seen
 
-    return 0, 0, seen
+    return 0, None, seen
 
 
-def save_progress(country_index, brand_index):
-    """Atomically save the next position to process."""
+def save_progress(country_index, brand_url=None):
+    """Atomically save the next position: a country, and optionally a designer URL in it."""
     temporary_state = STATE_PATH.with_suffix(STATE_PATH.suffix + ".tmp")
     with temporary_state.open("w", encoding="utf-8") as state_file:
-        json.dump({"country_index": country_index, "brand_index": brand_index}, state_file)
+        json.dump({"country_index": country_index, "brand_url": brand_url}, state_file)
         state_file.flush()
+        os.fsync(state_file.fileno())
     temporary_state.replace(STATE_PATH)
+
+
+def start_position(brand_urls, resume, country):
+    """Index in `brand_urls` to resume at: `resume` is a designer URL, or an old-style index."""
+    if resume is None:
+        return 0
+    if isinstance(resume, int):
+        if resume > len(brand_urls):
+            raise ValueError("Checkpoint designer index {} exceeds {} designers for {}".format(
+                resume, len(brand_urls), country))
+        return resume
+    if resume not in brand_urls:
+        raise ValueError(
+            "Checkpoint designer {} is not on the {} page any more; delete {} to restart "
+            "that country".format(resume, country, STATE_PATH))
+    return brand_urls.index(resume)
+
+
+def fetch_designer_perfumes(client, brand_url):
+    """Perfume URLs on a designer page. An empty page is fetched once more before it is
+    accepted as empty, since a page that did not finish loading looks the same."""
+    for attempt in (1, 2):
+        tree = client.fetch_tree(brand_url, scroll_for=PERFUME_LINKS)
+        urls = matching_urls(tree, brand_url, PERFUME_PATH)
+        if urls:
+            return urls
+        if attempt == 1:
+            print("[Empty] {} had no perfumes; trying once more".format(brand_url), flush=True)
+    try:
+        title = client.page.title().strip()
+    except FETCH_ERRORS:
+        title = "(title unavailable)"
+    print("[Empty] {} still empty (title={!r}); recorded in {}".format(
+        brand_url, title, EMPTY_PATH), flush=True)
+    with EMPTY_PATH.open("a", encoding="utf-8") as empty:
+        empty.write(brand_url + "\n")
+    return []
 
 
 def main():
     try:
-        country_index, brand_index, seen = load_progress()
+        country_index, resume, seen = load_progress()
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print("Could not read crawl checkpoint: {}".format(exc))
         return 1
@@ -85,58 +154,39 @@ def main():
                     country = COUNTRIES[current_country_index]
                     country_url = urljoin(BASE_URL, "/country/{}.html".format(country))
                     print("[Country] {}".format(country_url), flush=True)
-                    country_tree = client.fetch_tree(country_url)
+                    country_tree = client.fetch_tree(country_url, scroll_for=BRAND_LINKS)
+                    brand_urls = matching_urls(country_tree, country_url, BRAND_PATH)
 
-                    brand_hrefs = list(dict.fromkeys(
-                        href for href in country_tree.xpath(
-                            "//a[contains(@href, '/designers/')]/@href"
-                        )
-                        if BRAND_PATH.fullmatch(urlsplit(href).path)
-                    ))
-
-                    start_brand = brand_index if current_country_index == country_index else 0
-                    if start_brand > len(brand_hrefs):
-                        raise ValueError(
-                            "Checkpoint designer index {} exceeds {} designers for {}".format(
-                                start_brand, len(brand_hrefs), country
-                            )
-                        )
-
-                    for current_brand_index in range(start_brand, len(brand_hrefs)):
-                        brand_url = urljoin(BASE_URL, brand_hrefs[current_brand_index])
+                    start = start_position(
+                        brand_urls, resume if current_country_index == country_index else None, country
+                    )
+                    for current_brand_index in range(start, len(brand_urls)):
+                        brand_url = brand_urls[current_brand_index]
                         print("[Designer {}/{}] {}".format(
-                            current_brand_index + 1, len(brand_hrefs), brand_url
+                            current_brand_index + 1, len(brand_urls), brand_url
                         ), flush=True)
-                        brand_tree = client.fetch_tree(brand_url)
-
-                        perfume_hrefs = list(dict.fromkeys(
-                            href for href in brand_tree.xpath(
-                                "//a[contains(@href, '/perfume/')]/@href"
-                            )
-                            if PERFUME_PATH.fullmatch(urlsplit(href).path)
-                        ))
 
                         added = 0
-                        for perfume_href in perfume_hrefs:
-                            perfume_url = urljoin(BASE_URL, perfume_href)
+                        for perfume_url in fetch_designer_perfumes(client, brand_url):
                             if perfume_url in seen:
                                 continue
                             seen.add(perfume_url)
                             output.write(perfume_url + "\n")
                             added += 1
 
+                        # URLs reach the disk before the position that says they are done.
                         output.flush()
-                        if current_brand_index + 1 < len(brand_hrefs):
-                            save_progress(current_country_index, current_brand_index + 1)
+                        os.fsync(output.fileno())
+                        if current_brand_index + 1 < len(brand_urls):
+                            save_progress(current_country_index, brand_urls[current_brand_index + 1])
                         else:
-                            save_progress(current_country_index + 1, 0)
+                            save_progress(current_country_index + 1)
 
                         print("[Saved] {} new URLs; {} total unique URLs.".format(
                             added, len(seen)
                         ), flush=True)
 
-                    save_progress(current_country_index + 1, 0)
-                    brand_index = 0
+                    save_progress(current_country_index + 1)
 
         if not seen:
             print("No perfume URLs were found; the existing manifest was not replaced.")

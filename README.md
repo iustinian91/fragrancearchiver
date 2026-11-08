@@ -34,6 +34,18 @@ The browser opens visibly. The crawler visits country and designer pages. It
 writes discovered URLs incrementally to `perfumes_manifest.txt.tmp` and saves
 its next country/designer position in `perfumes_manifest.state.json`.
 
+Country and designer pages load their lists as you scroll, so the crawler scrolls each
+one until the number of links stops growing. If a page is still growing after 150 scroll
+steps it stops instead of saving a partial list. A designer page with no perfumes is
+fetched once more; if it is still empty it is noted in `perfumes_manifest.empty.txt` and
+the crawl continues. Only links on fragrantica.com are kept, written as
+`https://www.fragrantica.com/...` without query strings, so each perfume has one URL.
+
+The checkpoint stores the next designer's URL (not a position in a list), so it still
+lands in the right place if the page lists designers in a slightly different order next
+time. If the saved designer is no longer listed, or the checkpoint exists without
+`perfumes_manifest.txt.tmp`, the crawler stops and says so instead of guessing.
+
 If an HTTP error or a Cloudflare challenge is detected, the crawl stops and
 preserves the manifest and checkpoint. If a challenge page appears, handle
 access through the browser/site's normal supported process; the crawler does
@@ -135,7 +147,8 @@ shows large counts abbreviated (`2.6k`), so those votes are stored as rounded in
 (2600). Its levels (very weak..eternal, intimate..enormous) are stored by position under
 the original names (`poor`..`very long lasting`, `soft`..`enormous`). A perfume with no
 votes is stored as missing. `python tests/test_votes.py` checks the parsing against a saved
-copy of the section.
+copy of the section, and `python tests/test_manifest.py` checks the manifest crawler's link
+matching, scrolling, checkpoints and empty-page handling without a browser.
 
 ### Rebuilding the database
 

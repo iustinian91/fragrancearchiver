@@ -16,7 +16,14 @@ IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no nee
 MAX_RATE_LIMIT_RETRIES = 5
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
+SCROLL_STEP_WAIT_MS = 500
+STABLE_SCROLL_CHECKS = 3
+MAX_SCROLL_STEPS = 150
 HEADLESS = False
+
+
+class ScrollIncompleteError(RuntimeError):
+    """Raised when a lazy-loaded list is still growing when the scroll limit is reached."""
 
 
 class CloudflareChallengeError(RuntimeError):
@@ -133,6 +140,33 @@ class BrowserClient:
         )
         sleep(wait_seconds)
 
+    def _scroll_until_stable(self, item_selector):
+        """Scroll a long page until the number of `item_selector` matches stops growing.
+
+        Done when the page is at the bottom and the count has not grown for
+        STABLE_SCROLL_CHECKS checks in a row. Raises ScrollIncompleteError if it is still
+        growing after MAX_SCROLL_STEPS, because stopping there would silently drop items."""
+        last_count, stable = -1, 0
+        for _step in range(MAX_SCROLL_STEPS):
+            count = self.page.locator(item_selector).count()
+            at_bottom = self.page.evaluate(
+                "() => window.scrollY + window.innerHeight >= "
+                "document.documentElement.scrollHeight - 2"
+            )
+            stable = stable + 1 if (count == last_count and at_bottom) else 0
+            if stable >= STABLE_SCROLL_CHECKS:
+                self.page.evaluate("() => window.scrollTo(0, 0)")
+                return count
+            last_count = count
+            self.page.evaluate(
+                "() => window.scrollBy(0, Math.max(400, Math.floor(window.innerHeight * 0.8)))"
+            )
+            self.page.wait_for_timeout(SCROLL_STEP_WAIT_MS)
+        raise ScrollIncompleteError(
+            "Page {} was still loading items after {} scroll steps ({} found); stopping instead "
+            "of saving a partial list.".format(self.page.url, MAX_SCROLL_STEPS, last_count)
+        )
+
     def _wait_for_lazy(self, selector):
         """Scroll down a screen at a time until `selector` has been drawn by the page's own
         script, then give it a moment to fill in. Best effort: a page without it (no votes)
@@ -147,10 +181,12 @@ class BrowserClient:
         except PatchrightError:
             pass
 
-    def fetch_tree(self, url, timeout_ms=None, wait_for=None):
+    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
-        `wait_for` is a CSS selector for content the page fills in after it opens."""
+        `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
+        it appears. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
+        until their number stops growing and raises if it never does."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
             response = self.page.goto(
@@ -179,6 +215,8 @@ class BrowserClient:
                 detail = "HTTP {} for {}".format(response.status, url)
                 raise RuntimeError(detail)
 
+            if scroll_for:
+                self._scroll_until_stable(scroll_for)
             if wait_for:
                 self._wait_for_lazy(wait_for)
             return html.fromstring(self.page.content())
