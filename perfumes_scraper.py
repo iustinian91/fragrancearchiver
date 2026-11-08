@@ -185,6 +185,7 @@ def launch_year(page_title, tree):
 LONGEVITY_KEYS = ("poor", "weak", "moderate", "long lasting", "very long lasting")
 SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
 VOTES_READY = ".tw-perf-card"  # the vote cards are drawn by script after the page opens
+VOTES_STOP_AT = "Reviews"      # the cards are above this heading; no need to scroll past it
 
 
 def parse_count(text):
@@ -237,7 +238,7 @@ def scrape_perfume(client, url):
 
     url_brand = match.group("brand").replace("-", " ")
     url_title = match.group("title").replace("-", " ")
-    tree = client.fetch_tree(url, wait_for=VOTES_READY)
+    tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT)
 
     names = page_name_candidates(tree)
     page_brand = find_name(names, url_brand)

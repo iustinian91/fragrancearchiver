@@ -29,4 +29,33 @@ zero = html.fromstring(
 for span in zero.xpath("//span[contains(@class,'text-[10px]')]"):
     span.text = "0"
 assert ps.page_votes(zero) == (None, None), "no votes at all is stored as missing"
+
+# ---- scrolling for the vote cards stops at the Reviews heading ----
+import browser_client as bc  # noqa: E402
+
+
+class Loc:
+    def __init__(self, page): self.page = page
+    def count(self): return 0          # the cards never appear (a perfume with no votes)
+
+
+class Page:
+    def __init__(self, reviews_after): self.scrolls, self.reviews_after = 0, reviews_after
+    def locator(self, selector): return Loc(self)
+    def evaluate(self, js, *args):
+        if "scrollBy" in js:
+            self.scrolls += 1
+            return None
+        return self.scrolls >= self.reviews_after      # the Reviews heading check
+    def wait_for_timeout(self, ms): pass
+
+
+client = bc.BrowserClient.__new__(bc.BrowserClient)
+client.page = Page(reviews_after=4)
+client._wait_for_lazy(".tw-perf-card", stop_at="Reviews")
+assert client.page.scrolls == 4, client.page.scrolls            # stopped at Reviews, not at the cap
+client.page = Page(reviews_after=999)
+client._wait_for_lazy(".tw-perf-card", stop_at="Reviews")
+assert client.page.scrolls == bc.MAX_LAZY_STEPS                  # still bounded without it
+print("scroll stops at the Reviews heading OK")
 print("vote extraction OK")

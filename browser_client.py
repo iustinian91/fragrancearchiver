@@ -19,6 +19,7 @@ RETRY_AFTER_BUFFER_SECONDS = 2
 SCROLL_STEP_WAIT_MS = 500
 STABLE_SCROLL_CHECKS = 3
 MAX_SCROLL_STEPS = 150
+MAX_LAZY_STEPS = 20
 HEADLESS = False
 
 
@@ -167,25 +168,38 @@ class BrowserClient:
             "of saving a partial list.".format(self.page.url, MAX_SCROLL_STEPS, last_count)
         )
 
-    def _wait_for_lazy(self, selector):
+    def _reached_heading(self, text):
+        """True once a heading starting with `text` has scrolled into the viewport."""
+        return self.page.evaluate(
+            """(text) => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].some(h =>
+                h.textContent.trim().toLowerCase().startsWith(text.toLowerCase())
+                && h.getBoundingClientRect().top < window.innerHeight)""",
+            text,
+        )
+
+    def _wait_for_lazy(self, selector, stop_at=None):
         """Scroll down a screen at a time until `selector` has been drawn by the page's own
-        script, then give it a moment to fill in. Best effort: a page without it (no votes)
-        simply carries on after about ten seconds."""
+        script, then give it a moment to fill in. Scrolling also stops once a heading
+        starting with `stop_at` (e.g. "Reviews") comes into view, since what we want is above
+        it. Best effort: a page without the content carries on without it."""
         try:
-            for _ in range(20):
+            for _ in range(MAX_LAZY_STEPS):
                 if self.page.locator(selector).count():
                     self.page.wait_for_timeout(1500)
+                    return
+                if stop_at and self._reached_heading(stop_at):
+                    self.page.wait_for_timeout(1500)   # it may still be drawing
                     return
                 self.page.evaluate("window.scrollBy(0, window.innerHeight)")
                 self.page.wait_for_timeout(500)
         except PatchrightError:
             pass
 
-    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None):
+    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
-        it appears. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
+        it appears, or until a heading starting with `stop_at` comes into view. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
         until their number stops growing and raises if it never does."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
@@ -218,7 +232,7 @@ class BrowserClient:
             if scroll_for:
                 self._scroll_until_stable(scroll_for)
             if wait_for:
-                self._wait_for_lazy(wait_for)
+                self._wait_for_lazy(wait_for, stop_at)
             return html.fromstring(self.page.content())
         raise RuntimeError(
             "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
