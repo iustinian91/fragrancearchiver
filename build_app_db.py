@@ -29,7 +29,7 @@ def main():
     PRAGMA temp_store=MEMORY;
     """)
 
-    # Schema (no sillage)
+    # Schema
     cur.executescript("""
     CREATE TABLE perfumes(
       id TEXT PRIMARY KEY,
@@ -57,6 +57,20 @@ def main():
       FOREIGN KEY (perfume_id) REFERENCES perfumes(id) ON DELETE CASCADE
     );
 
+    -- Vote charts (longevity, sillage, gender, when_to_wear). `share` is votes / total votes for
+    -- the single-choice charts and votes / the strongest level for when_to_wear (a voter can
+    -- pick several seasons), so it is always between 0 and 1. `position` keeps display order.
+    CREATE TABLE perfume_votes(
+      perfume_id TEXT NOT NULL,
+      chart TEXT NOT NULL,
+      option TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      votes INTEGER NOT NULL,
+      share REAL NOT NULL,
+      PRIMARY KEY (perfume_id, chart, option),
+      FOREIGN KEY (perfume_id) REFERENCES perfumes(id) ON DELETE CASCADE
+    );
+
     -- Full-text search across brand, name, and combined notes/accords
     CREATE VIRTUAL TABLE perfume_fts USING fts5(
       brand, name, notes,
@@ -68,12 +82,13 @@ def main():
     CREATE INDEX idx_perfumes_year  ON perfumes(year);
     CREATE INDEX idx_notes_note     ON notes(note);
     CREATE INDEX idx_accords_accord ON accords(accord);
+    CREATE INDEX idx_votes_chart    ON perfume_votes(chart, option);
     """)
 
     with open(DATA, encoding="utf-8") as f:
         data = json.load(f)
 
-    perf_rows, note_rows, acc_rows, fts_rows = [], [], [], []
+    perf_rows, note_rows, acc_rows, fts_rows, vote_rows = [], [], [], [], []
     for rowid, p in enumerate(data, start=1):
         image = p.get("image")
         # Explicit rowid: perfume_fts is contentless, so search hits join back via perfume_fts.rowid = perfumes.rowid
@@ -86,6 +101,10 @@ def main():
             for n in p.get("notes", {}).get(kind, []):
                 note_rows.append((p["id"], kind, n))
                 all_notes.append(n)
+
+        for chart, data_ in p.get("charts", {}).items():
+            for position, (option, votes) in enumerate(data_["votes"].items(), start=1):
+                vote_rows.append((p["id"], chart, option, position, votes, data_["share"][option]))
 
         # main_accords (ordered)
         for idx, a in enumerate(p.get("main_accords", []), start=1):
@@ -104,6 +123,10 @@ def main():
         cur.executemany(
             "INSERT INTO notes(perfume_id,kind,note) VALUES (?,?,?)",
             note_rows
+        )
+        cur.executemany(
+            "INSERT INTO perfume_votes(perfume_id,chart,option,position,votes,share) VALUES (?,?,?,?,?,?)",
+            vote_rows
         )
         cur.executemany(
             "INSERT INTO accords(perfume_id,accord,rank) VALUES (?,?,?)",

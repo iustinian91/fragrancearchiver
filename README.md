@@ -150,6 +150,19 @@ votes is stored as missing. `python tests/test_votes.py` checks the parsing agai
 copy of the section, and `python tests/test_manifest.py` checks the manifest crawler's link
 matching, scrolling, checkpoints and empty-page handling without a browser.
 
+### Vote charts
+
+Besides longevity and sillage, each perfume page's **gender** chart (female, more female,
+unisex, more male, male) and **when to wear** chart (winter, spring, summer, fall, day,
+night) are stored as vote counts in the `gender` and `when_to_wear` columns. Top, middle and
+base notes are stored in `notes`. `clean.py` normalizes every chart into
+`{"votes": {...}, "share": {...}}` in `perfumes_clean.json`: for longevity, sillage and gender
+the shares add up to 1; for when to wear a voter can pick several seasons, so each level is
+shown relative to the strongest one (the strongest is 1.0). `build_app_db.py` writes them
+to the `perfume_votes` table (`perfume_id, chart, option, position, votes, share`), and
+`popularity` is the number of longevity votes. `python tests/test_pipeline.py` runs a saved
+page through scrape, export, clean and the app database.
+
 ### Rebuilding the database
 
 Progress is tracked per URL in the `scrape_progress` table of `perfumes.sqlite`, so

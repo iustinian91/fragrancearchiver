@@ -204,32 +204,70 @@ def parse_count(text):
     return round(number * factor)
 
 
-def _vote_rows(card):
-    """(label, count) pairs of one vote card, in page order, from the rows below the slider."""
-    rows = []
-    for row in card.xpath(".//div[contains(@class, 'space-y-2')]/div"):
-        spans = [" ".join(t.split()) for t in row.xpath(".//span/text()") if t.strip()]
-        if len(spans) >= 2:
-            rows.append((spans[0], parse_count(spans[1])))
+def _chart_rows(container):
+    """(label, count) pairs of a vote chart, in page order.
+
+    Each row is a label span followed by a count span ('very weak' '216'); anything else in
+    the container (the heading, 'no vote', slider marks) is skipped."""
+    texts = [" ".join(t.split()) for t in container.xpath(".//span/text()")]
+    texts = [t for t in texts if t]
+    rows, i = [], 0
+    while i < len(texts) - 1:
+        label, count = texts[i], parse_count(texts[i + 1])
+        if parse_count(label) is None and label.lower() != "no vote" and count is not None:
+            rows.append((label.lower(), count))
+            i += 2
+        else:
+            i += 1
     return rows
 
 
-def page_votes(tree):
-    """(longevity, sillage) vote counts keyed by the names the database has always used, or
-    None for a card that is missing or does not have the expected number of levels.
+GENDER_KEYS = ("female", "more female", "unisex", "more male", "male")
+WHEN_KEYS = ("winter", "spring", "summer", "fall", "day", "night")
+PERF_CARD = "//*[contains(concat(' ', normalize-space(@class), ' '), ' tw-perf-card ')]"
+WHEN_CHART = (
+    "//span[contains(@class, 'tw-rating-card-label')][normalize-space()='When To Wear']"
+    "/ancestor::div[.//div[@index]][1]"
+)
 
-    The site's levels are very weak..eternal and intimate..enormous; they are stored by
-    position under the original names (poor..very long lasting, soft..enormous) so existing
-    data and clean.py keep working. A card with no votes at all is stored as None."""
-    found = {}
-    for card in tree.xpath("//*[contains(concat(' ', normalize-space(@class), ' '), ' tw-perf-card ')]"):
+
+def _as_votes(rows, keys, by_label):
+    """Vote counts as {key: "count"}, or None unless the chart has every expected level and
+    at least one vote. `by_label` charts must carry exactly `keys` as their labels; the others
+    (longevity, sillage) have been renamed by the site, so they are matched by position."""
+    if len(rows) != len(keys) or (by_label and tuple(label for label, _ in rows) != keys):
+        return None
+    votes = {key: str(count) for key, (_, count) in zip(keys, rows)}
+    return votes if any(int(v) for v in votes.values()) else None
+
+
+def page_charts(tree):
+    """Vote charts on a perfume page as a dict with the keys longevity, sillage, gender and
+    when_to_wear; each is {level: "votes"} or None (chart missing, unexpected shape, no votes).
+
+    The site's levels for longevity (very weak..eternal) and sillage (intimate..enormous) are
+    stored by position under the original names (poor..very long lasting, soft..enormous), so
+    existing data and clean.py keep working. Counts above 1,000 are abbreviated by the site
+    ('2.6k') and so approximate."""
+    charts = dict.fromkeys(("longevity", "sillage", "gender", "when_to_wear"))
+    for card in tree.xpath(PERF_CARD):
         heading = " ".join(card.xpath(".//span[contains(@class, 'uppercase')]/text()")).strip().lower()
-        for kind, keys in (("longevity", LONGEVITY_KEYS), ("sillage", SILLAGE_KEYS)):
-            rows = _vote_rows(card)
-            if heading == kind and len(rows) == len(keys) and all(c is not None for _, c in rows):
-                votes = {key: str(count) for key, (_, count) in zip(keys, rows)}
-                found[kind] = votes if any(int(v) for v in votes.values()) else None
-    return found.get("longevity"), found.get("sillage")
+        rows = _chart_rows(card)
+        if heading == "longevity":
+            charts["longevity"] = _as_votes(rows, LONGEVITY_KEYS, by_label=False)
+        elif heading == "sillage":
+            charts["sillage"] = _as_votes(rows, SILLAGE_KEYS, by_label=False)
+        elif heading == "gender":
+            charts["gender"] = _as_votes(rows, GENDER_KEYS, by_label=True)
+    for chart in tree.xpath(WHEN_CHART)[:1]:
+        charts["when_to_wear"] = _as_votes(_chart_rows(chart), WHEN_KEYS, by_label=True)
+    return charts
+
+
+def page_votes(tree):
+    """(longevity, sillage) only; see page_charts."""
+    charts = page_charts(tree)
+    return charts["longevity"], charts["sillage"]
 
 
 def scrape_perfume(client, url):
@@ -269,11 +307,12 @@ def scrape_perfume(client, url):
     main_accords = page_main_accords(tree)
     notes = page_notes(tree)
 
-    longevity, sillage = page_votes(tree)
+    charts = page_charts(tree)
 
     record = (
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),
-        json.dumps(notes), json.dumps(longevity), json.dumps(sillage),
+        json.dumps(notes), json.dumps(charts["longevity"]), json.dumps(charts["sillage"]),
+        json.dumps(charts["gender"]), json.dumps(charts["when_to_wear"]),
     )
     return perfume, record
 
@@ -319,7 +358,9 @@ def main(argv=None):
     from_page = {"title": 0, "brand": 0}
     # How many scraped rows actually have each field, so an extraction that stops working
     # (e.g. after a site redesign) shows up after a short test run instead of a long crawl.
-    filled = dict.fromkeys(("year", "accords", "notes", "longevity", "sillage"), 0)
+    filled = dict.fromkeys(
+        ("year", "accords", "notes", "longevity", "sillage", "gender", "when_to_wear"), 0
+    )
     scraped = 0
 
     try:
@@ -332,7 +373,9 @@ def main(argv=None):
                 from_page["title"] += perfume["title_source"] == "page"
                 from_page["brand"] += perfume["brand_source"] == "page"
                 filled["year"] += record[2] is not None
-                for field, value in zip(("accords", "notes", "longevity", "sillage"), record[3:]):
+                for field, value in zip(
+                        ("accords", "notes", "longevity", "sillage", "gender", "when_to_wear"), record[3:]
+                ):
                     filled[field] += value != "null"
                 print({
                     "progress": "{}/{}".format(position, len(pending)),

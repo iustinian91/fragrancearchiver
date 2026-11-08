@@ -20,6 +20,11 @@ class _TableDB:
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS {} ({})".format(self.table, definitions)
         )
+        # A database made by an older version lacks the newer columns; add them in place.
+        have = {row[1] for row in self.conn.execute("PRAGMA table_info({})".format(self.table))}
+        for column in self.columns:
+            if column not in have:
+                self.conn.execute("ALTER TABLE {} ADD COLUMN {} TEXT".format(self.table, column))
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scrape_progress (
@@ -118,6 +123,7 @@ class PerfumesDBHelper(_TableDB):
     table = "perfumes"
     columns = (
         "brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
+        "gender", "when_to_wear",
     )
 
     def migrate_legacy_progress(self, manifest_urls):

@@ -16,14 +16,19 @@ from pathlib import Path
 
 PAGE_ID = re.compile(r"-(\d+)\.html?$")
 IMAGE_ID = re.compile(r"^o\.(\d+)\.")
-FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage")
+FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear")
+
+
+COLUMNS = ("brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
+           "gender", "when_to_wear")
 
 
 def load(db):
+    """All rows as tuples in COLUMNS order (columns an older database lacks read as None)."""
     conn = sqlite3.connect("file:{}?mode=ro".format(db), uri=True)
-    rows = conn.execute(
-        "SELECT brand, perfume, launch_year, main_accords, notes, longevity, sillage FROM perfumes"
-    ).fetchall()
+    have = {row[1] for row in conn.execute("PRAGMA table_info(perfumes)")}
+    select = ", ".join(c if c in have else "NULL" for c in COLUMNS)
+    rows = conn.execute("SELECT {} FROM perfumes".format(select)).fetchall()
     try:
         progress = {r[0] for r in conn.execute("SELECT url FROM scrape_progress")}
     except sqlite3.OperationalError:
@@ -41,7 +46,16 @@ def info(row):
 
 
 def present(value):
-    return value not in (None, "", "null", "[]", "{}")
+    """True for a stored value that carries data; a vote chart whose counts are all zero does not."""
+    if value in (None, "", "null", "[]", "{}"):
+        return False
+    try:
+        data = json.loads(value)
+    except (TypeError, ValueError):
+        return True
+    if isinstance(data, dict) and data and all(isinstance(v, (int, str)) and str(v).isdigit() for v in data.values()):
+        return any(int(v) for v in data.values())
+    return True
 
 
 def page_id(row):
@@ -123,7 +137,7 @@ def main():
             lost += sum(present(o[2 + i]) and not present(r[2 + i]) for i in range(len(FIELDS))) > 0
         print("\nVersus {}: {} pages in both".format(args.old, both))
         print("  same launch year: {:.1f}%".format(100 * same_year / max(both, 1)))
-        print("  rows that LOST a field the old crawl had: {}  (longevity/sillage expected until fixed)".format(lost))
+        print("  rows that LOST a field the old crawl had: {}  (an older crawl has no gender or when_to_wear, so those never count)".format(lost))
 
     print("\n{}".format("FAILED" if problems else "OK: no completeness problems"))
     return 1 if problems else 0

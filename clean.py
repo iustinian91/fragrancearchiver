@@ -22,6 +22,26 @@ LON_KEYS = {
     "very weak": "poor",  # the redesigned site's name for the bottom level
 }
 
+SIL_KEYS = {
+    "soft": "soft", "intimate": "soft",
+    "moderate": "moderate",
+    "heavy": "heavy", "strong": "heavy",
+    "enormous": "enormous",
+}
+GENDER_KEYS = ("female", "more female", "unisex", "more male", "male")
+WHEN_KEYS = ("winter", "spring", "summer", "fall", "day", "night")
+
+# Display order of each chart's levels, and how its votes are turned into shares: the others
+# are single-choice (one vote picks one level), so shares add up to 1; "when to wear" lets a
+# vote pick several seasons/times, so each level is shown relative to the strongest one.
+CHART_ORDER = {
+    "longevity": ("poor", "weak", "moderate", "long lasting", "very long lasting"),
+    "sillage": ("soft", "moderate", "heavy", "enormous"),
+    "gender": GENDER_KEYS,
+    "when_to_wear": WHEN_KEYS,
+}
+RELATIVE_TO_MAX = {"when_to_wear"}
+
 BRAND_ALIASES = {
     "18 21 man made": "18.21 Man Made",
     # add more alias fixes as needed
@@ -107,6 +127,23 @@ def _normalize_counts(d: dict, key_map: dict) -> dict:
         num = _to_int(v)
         out[nk] = 0 if num is None else num
     return out
+
+
+def _chart(raw, key_map, order, relative_to_max=False):
+    """Normalise one vote chart.
+
+    Returns {"votes": {level: n}, "share": {level: 0..1}} with the levels in display order, or
+    None if the chart is missing or has no votes. Shares add up to 1 for single-choice charts
+    and are relative to the strongest level when `relative_to_max` is set."""
+    counts = _normalize_counts(_json_or_dict(raw), key_map)
+    counts = {level: counts[level] for level in order if level in counts}
+    base = max(counts.values(), default=0) if relative_to_max else sum(counts.values())
+    if base <= 0:
+        return None
+    return {
+        "votes": counts,
+        "share": {level: round(n / base, 4) for level, n in counts.items()},
+    }
 
 
 def _clean_list(items):
@@ -202,7 +239,17 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
         year = _to_int(p.get("launch_year"))
         notes = _parse_notes(p.get("notes"))
         main_accords = _parse_main_accords(p.get("main_accords"))
-        longevity = _normalize_counts(_json_or_dict(p.get("longevity")), LON_KEYS)
+        identity = {k: k for k in GENDER_KEYS + WHEN_KEYS}
+        charts = {
+            name: chart for name, chart in (
+                ("longevity", _chart(p.get("longevity"), LON_KEYS, CHART_ORDER["longevity"])),
+                ("sillage", _chart(p.get("sillage"), SIL_KEYS, CHART_ORDER["sillage"])),
+                ("gender", _chart(p.get("gender"), identity, GENDER_KEYS)),
+                ("when_to_wear", _chart(p.get("when_to_wear"), identity, WHEN_KEYS, relative_to_max=True)),
+            ) if chart
+        }
+        # "popularity" is how many people voted on longevity, a proxy for how widely worn it is
+        popularity = sum(charts["longevity"]["votes"].values()) if "longevity" in charts else 0
 
         # build_app_db.py needs unique ids and slugs; disambiguate repeated rows deterministically
         dup = 0
@@ -225,11 +272,11 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
             "image": _best_image(p),
             "main_accords": main_accords,
             "notes": notes,                 # {top, middle, base}
-            "longevity": longevity,         # dict of vote counts
-            "popularity": sum(longevity.values()),
+            "charts": charts,               # {chart: {"votes": {...}, "share": {...}}}
+            "popularity": popularity,
         })
 
-    # write the canonical, sillage-free JSON
+    # write the canonical JSON
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(final, f, indent=2, ensure_ascii=False)
 
@@ -247,8 +294,11 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
         from_page = sum(1 for p in data if _perfume_info(p).get("title_source") == "page")
         print(f"Names taken from the page: {from_page} (the rest were rebuilt from URL slugs)")
         print(f"Avg notes per perfume: {avg_notes:.2f}")
+        for name in CHART_ORDER:
+            have = sum(1 for x in final if name in x["charts"])
+            print(f"With {name} votes: {have} ({have * 100 // max(total, 1)}%)")
 
-    print(f"✅ Wrote {output_file} (no sillage)")
+    print(f"✅ Wrote {output_file}")
 
 
 def main():
