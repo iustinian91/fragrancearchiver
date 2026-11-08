@@ -1,0 +1,17 @@
+# Perfume pages for smoke_test.py, chosen to cover the cases that have gone wrong before.
+# Format: <path on fragrantica.com>   # why it is here
+/perfume/Tom-Ford/Black-Orchid-1018.html                           # popular: every chart and note group filled
+/perfume/Creed/Aventus-9828.html                                   # popular men's fragrance
+/perfume/Alkemia-Perfumes/Devil-s-Dandy-39961.html                 # apostrophe in the title
+/perfume/Antonia-s-Flowers/Antonia-s-Flowers-8103.html             # apostrophe in brand and title
+/perfume/Ava-Luxe/Creme-Brulee-25168.html                          # accent (Crème Brûlée)
+/perfume/Ava-Luxe/Cafe-Noir-10536.html                             # accent (Café)
+/perfume/Abercrombie-Fitch/Oud-Essence-41981.html                  # ampersand in the brand
+/perfume/A-Wing-A-Prayer-Perfumes/Bellini-Perfume-Oil-36133.html  # oil: unusual note layout
+/perfume/40-Notes-Perfume/Cashmere-Musk-15537.html                 # no year, flat note list, few votes
+/perfume/Antonio-Banderas/Diavolo-112.html                         # very old id
+/perfume/Aramis/Aramis-113.html                                    # brand and title are the same word
+/perfume/Bissoumine/Aria-Sublime-20027.html                        # mid-range id
+/perfume/A-Lab-on-Fire/Made-in-Heaven-27620.html                   # earlier crawl found no notes or accords
+/perfume/Abercrombie-Fitch/41-3510.html                            # numeric title, earlier crawl found no notes
+/perfume/18-21-Man-Made/Sweet-Tobacco-Spirits-37691.html           # digits and punctuation in the brand

@@ -1,5 +1,6 @@
 """Discover perfume URLs with Patchright and maintain a resumable manifest."""
 
+import argparse
 import json
 import os
 import re
@@ -134,7 +135,19 @@ def fetch_designer_perfumes(client, brand_url):
     return []
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--country", choices=COUNTRIES, metavar="NAME",
+        help="crawl only this country (for trial runs; use a scratch folder)",
+    )
+    parser.add_argument(
+        "--designers", type=int, metavar="N",
+        help="crawl only the first N designers of each country (for trial runs)",
+    )
+    args = parser.parse_args(argv)
+    countries = [args.country] if args.country else COUNTRIES
+
     try:
         country_index, resume, seen = load_progress()
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -143,19 +156,21 @@ def main():
 
     print(
         "Starting at country {}/{}; {} unique URLs already saved.".format(
-            min(country_index + 1, len(COUNTRIES)), len(COUNTRIES), len(seen)
+            min(country_index + 1, len(countries)), len(countries), len(seen)
         )
     )
 
     try:
         with BrowserClient() as client:
             with TEMP_OUTPUT_PATH.open("a", encoding="utf-8") as output:
-                for current_country_index in range(country_index, len(COUNTRIES)):
-                    country = COUNTRIES[current_country_index]
+                for current_country_index in range(country_index, len(countries)):
+                    country = countries[current_country_index]
                     country_url = urljoin(BASE_URL, "/country/{}.html".format(country))
                     print("[Country] {}".format(country_url), flush=True)
                     country_tree = client.fetch_tree(country_url, scroll_for=BRAND_LINKS)
                     brand_urls = matching_urls(country_tree, country_url, BRAND_PATH)
+                    if args.designers is not None:
+                        brand_urls = brand_urls[:args.designers]
 
                     start = start_position(
                         brand_urls, resume if current_country_index == country_index else None, country
@@ -167,7 +182,8 @@ def main():
                         ), flush=True)
 
                         added = 0
-                        for perfume_url in fetch_designer_perfumes(client, brand_url):
+                        found = fetch_designer_perfumes(client, brand_url)
+                        for perfume_url in found:
                             if perfume_url in seen:
                                 continue
                             seen.add(perfume_url)
@@ -182,8 +198,8 @@ def main():
                         else:
                             save_progress(current_country_index + 1)
 
-                        print("[Saved] {} new URLs; {} total unique URLs.".format(
-                            added, len(seen)
+                        print("[Saved] {} perfumes found, {} new; {} total unique URLs.".format(
+                            len(found), added, len(seen)
                         ), flush=True)
 
                     save_progress(current_country_index + 1)

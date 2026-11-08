@@ -28,3 +28,4 @@ perfumes_clean.json
 *.db-shm
 *.sqlite-wal
 *.sqlite-shm
+smoke_run*/

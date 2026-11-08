@@ -172,6 +172,36 @@ is migrated by row position, which would carry over its known gaps), then rerun 
 scraper and the export/clean/build steps below. Perfume ids and slugs are derived from
 the names, so they change wherever a name changes.
 
+## Trying everything on a small sample first
+
+Before a full crawl, run the live smoke test:
+
+```bash
+python smoke_test.py            # about 15 minutes, a few dozen page loads
+python smoke_test.py --screenshots 5 --designers 2 --notes 5   # smaller, with chart screenshots
+```
+
+It runs every stage against the real site in a new `smoke_run_<time>/` folder, with its own
+databases, manifests and images: the URL crawl for one country (3 designers), the notes
+index, 15 hand-picked perfume pages from `smoke_urls.txt` (apostrophes, accents, very old
+ids, no pyramid, few votes, ...) plus 3 from the crawl, 8 note pages, then re-runs, export,
+clean and the `app.db` build. Your real data is never written to (the report proves it with a
+before/after fingerprint) and the full scrapers are never started.
+
+Each stored value is compared with what the live page displays, read by a separate piece of
+JavaScript (`smoke_oracle.py`) instead of the scraper's own parsing: title, brand and year,
+main accords, top/middle/base notes, and every vote chart (displayed categories and counts
+against the stored counts, then the normalized shares against both the counts and the bars the
+page draws). Images are checked for a matching URL and for a file that is non-empty and
+decodes. Databases are checked for one record per URL and no duplicates after re-running or
+with duplicated manifest lines. The result is a PASS / FAIL / UNAVAILABLE line per field and
+page in `report.md` (UNAVAILABLE means the page shows nothing there and nothing was stored).
+
+The run stops at the first HTTP 429/403, challenge page or list that never finishes loading
+and reports it as BLOCKED; it does not try to get around it. Pages that fail a check are saved
+under `failures/` so selectors can be fixed from the real HTML. Exit status: 0 all passed,
+1 a check failed, 2 blocked. `python tests/test_smoke.py` tests the comparison logic offline.
+
 ## Pipeline
 
 1. `perfumes_extract_manifest.py` / `notes_extract_manifest.py` - collect page URLs.

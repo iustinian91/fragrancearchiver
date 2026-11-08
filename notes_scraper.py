@@ -1,5 +1,6 @@
 """Scrape note pages and download their images using Patchright."""
 
+import argparse
 import json
 from pathlib import Path
 from urllib.parse import urljoin
@@ -27,8 +28,17 @@ def scrape_note(client, url):
     return note_title, note_image_file_names
 
 
-def main():
-    db = NotesDBHelper("notes.sqlite")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--db", default="notes.sqlite", help="SQLite file to write (default: %(default)s)"
+    )
+    parser.add_argument(
+        "--limit", type=int, help="scrape at most this many pages (for trial runs)"
+    )
+    args = parser.parse_args(argv)
+
+    db = NotesDBHelper(args.db)
     db.setup()
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -46,6 +56,8 @@ def main():
 
     total = len(note_urls)
     pending = [url for url in note_urls if url not in completed]
+    if args.limit is not None:
+        pending = pending[:args.limit]
     print(
         "Notes scrape: {} URLs in manifest, {} already complete, {} remaining.".format(
             total, len(completed), len(pending)
