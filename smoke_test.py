@@ -208,7 +208,7 @@ def stage_notes_manifest(report, args, workdir):
     if not args.skip_oracle:
         with BrowserClient() as client:
             client.fetch_tree(BASE_URL + "/notes/")
-            shown = patient_scroll(client.page, count_js=so.NOTEBOX_LINKS_JS)
+            shown = patient_scroll(client.page, count_js=so.NOTE_LINKS_JS)
             report.add(stage, "", "notes found == notes displayed", PASS if shown == len(urls) else FAIL,
                        "manifest {}; page {}".format(len(urls), shown))
     return urls

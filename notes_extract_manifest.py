@@ -1,12 +1,14 @@
 """Extract the Fragrantica note manifest and replace it atomically."""
 
+import re
 from pathlib import Path
 from urllib.parse import urljoin
 
-from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient
+from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, matching_urls
 
 OUTPUT_PATH = Path("notes_manifest.txt")
 TEMP_OUTPUT_PATH = Path("notes_manifest.txt.tmp")
+NOTE_PATH = re.compile(r"/notes/[^/]+-\d+\.html?$", re.IGNORECASE)
 
 
 def main():
@@ -20,11 +22,10 @@ def main():
         ))
         return 1
 
-    note_urls = list(dict.fromkeys(
-        urljoin(BASE_URL, href)
-        for href in tree.xpath("//div[@class='notebox']/a/@href")
-        if href.strip()
-    ))
+    # Every link to a note page (/notes/<Name>-<id>.html), wherever the page puts them; the
+    # menu's plain /notes/ link does not match.
+    notes_url = urljoin(BASE_URL, "/notes/")
+    note_urls = matching_urls(tree, notes_url, NOTE_PATH)
     if not note_urls:
         print("No note URLs were found; {} was not changed.".format(OUTPUT_PATH))
         return 1

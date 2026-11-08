@@ -5,11 +5,13 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from time import sleep
+from urllib.parse import urljoin, urlsplit
 
 from lxml import html
 from patchright.sync_api import Error as PatchrightError, sync_playwright
 
 BASE_URL = "https://www.fragrantica.com"
+SITE_HOSTS = {urlsplit(BASE_URL).netloc, urlsplit(BASE_URL).netloc.removeprefix("www.")}
 REQUEST_TIMEOUT_MS = 60000
 REQUEST_DELAYS = (2.5, 10.0)
 IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no need to wait as long
@@ -65,6 +67,22 @@ def cloudflare_challenge_reason(page):
         return "Cloudflare verification text detected in page body"
 
     return None
+
+
+def matching_urls(tree, base_url, pattern):
+    """Return unique page URLs whose path matches `pattern`.
+
+    Relative links are resolved against `base_url` first. Only links on the site itself are
+    kept, written with the canonical host and without query string or fragment, so one page
+    always has exactly one manifest URL (www and non-www links would otherwise be two).
+    """
+    urls = []
+    for href in tree.xpath("//a[@href]/@href"):
+        parts = urlsplit(urljoin(base_url, href))
+        if parts.netloc.lower() not in SITE_HOSTS or not pattern.fullmatch(parts.path):
+            continue
+        urls.append(urljoin(BASE_URL, parts.path))
+    return list(dict.fromkeys(urls))
 
 
 class BrowserClient:

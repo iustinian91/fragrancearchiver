@@ -5,9 +5,11 @@ import json
 import os
 import re
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
-from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, CloudflareChallengeError
+from browser_client import (
+    BASE_URL, FETCH_ERRORS, BrowserClient, CloudflareChallengeError, matching_urls,
+)
 
 OUTPUT_PATH = Path("perfumes_manifest.txt")
 TEMP_OUTPUT_PATH = Path("perfumes_manifest.txt.tmp")
@@ -25,25 +27,8 @@ COUNTRIES = [
 
 BRAND_PATH = re.compile(r"/designers/[^/]+\.html$", re.IGNORECASE)
 PERFUME_PATH = re.compile(r"/perfume/[^/]+/[^/]+-\d+\.html?$", re.IGNORECASE)
-SITE_HOSTS = {urlsplit(BASE_URL).netloc, urlsplit(BASE_URL).netloc.removeprefix("www.")}
 PERFUME_LINKS = 'a[href*="/perfume/"]'   # what the designer page scroll counts
 BRAND_LINKS = 'a[href*="/designers/"]'
-
-
-def matching_urls(tree, base_url, pattern):
-    """Return unique page URLs whose path matches `pattern`.
-
-    Relative links are resolved against `base_url` first. Only links on the site itself are
-    kept, written with the canonical host and without query string or fragment, so one page
-    always has exactly one manifest URL (www and non-www links would otherwise be two).
-    """
-    urls = []
-    for href in tree.xpath("//a[@href]/@href"):
-        parts = urlsplit(urljoin(base_url, href))
-        if parts.netloc.lower() not in SITE_HOSTS or not pattern.fullmatch(parts.path):
-            continue
-        urls.append(urljoin(BASE_URL, parts.path))
-    return list(dict.fromkeys(urls))
 
 
 def migrate_legacy_manifest():

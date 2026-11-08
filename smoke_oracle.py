@@ -113,8 +113,11 @@ DESIGNER_LINKS_JS = r"""
   .map(u => u.pathname)).size
 """
 
-NOTEBOX_LINKS_JS = r"""
-() => new Set([...document.querySelectorAll('div.notebox a[href]')].map(a => a.getAttribute('href'))).size
+NOTE_LINKS_JS = r"""
+() => new Set([...document.querySelectorAll('a[href]')]
+  .map(a => { try { return new URL(a.getAttribute('href'), location.href); } catch (e) { return null; } })
+  .filter(u => u && /\/notes\/[^/]+-\d+\.html?$/i.test(u.pathname))
+  .map(u => u.pathname)).size
 """
 
 
