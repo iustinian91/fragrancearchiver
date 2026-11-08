@@ -17,6 +17,13 @@ except ImportError:  # only the import is needed here, not a browser
 import perfumes_scraper as ps  # noqa: E402
 
 tree = html.fromstring((ROOT / "tests/fixtures/performance_section.html").read_text(encoding="utf-8"))
+# a second real page, the cards as rendered in the browser (Black Orchid); it also has Gender
+# and Price Value cards, which must be ignored
+orchid = html.fromstring((ROOT / "tests/fixtures/performance_cards_black_orchid.html").read_text(encoding="utf-8"))
+assert ps.page_votes(orchid)[0]["very long lasting"] == "5300" and ps.page_votes(orchid)[1]["enormous"] == "4000"
+# the page as served has empty cards: that must read as "no votes yet", not as an error
+served = html.fromstring('<div class="tw-perf-card"><div class="p-4"><longevity-rating-new/></div></div>')
+assert ps.page_votes(served) == (None, None)
 longevity, sillage = ps.page_votes(tree)
 assert longevity == {"poor": "216", "weak": "403", "moderate": "2600", "long lasting": "6000",
                      "very long lasting": "5300"}, longevity

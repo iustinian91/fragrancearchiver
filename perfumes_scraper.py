@@ -184,8 +184,10 @@ def launch_year(page_title, tree):
 
 LONGEVITY_KEYS = ("poor", "weak", "moderate", "long lasting", "very long lasting")
 SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
-VOTES_READY = ".tw-perf-card"  # the vote cards are drawn by script after the page opens
-VOTES_STOP_AT = "Reviews"      # the cards are above this heading; no need to scroll past it
+# The page as served already contains empty .tw-perf-card boxes; the vote rows (.space-y-2)
+# only appear once the page's script has drawn them, so wait for those.
+VOTES_READY = ".tw-perf-card .space-y-2"
+VOTES_STOP_AT = "Reviews"  # a heading such as "All Reviews By Date"; the cards are above it
 
 
 def parse_count(text):

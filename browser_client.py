@@ -169,10 +169,10 @@ class BrowserClient:
         )
 
     def _reached_heading(self, text):
-        """True once a heading starting with `text` has scrolled into the viewport."""
+        """True once a heading containing `text` (e.g. "All Reviews By Date") is in the viewport."""
         return self.page.evaluate(
             """(text) => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].some(h =>
-                h.textContent.trim().toLowerCase().startsWith(text.toLowerCase())
+                h.textContent.toLowerCase().includes(text.toLowerCase())
                 && h.getBoundingClientRect().top < window.innerHeight)""",
             text,
         )
@@ -180,7 +180,7 @@ class BrowserClient:
     def _wait_for_lazy(self, selector, stop_at=None):
         """Scroll down a screen at a time until `selector` has been drawn by the page's own
         script, then give it a moment to fill in. Scrolling also stops once a heading
-        starting with `stop_at` (e.g. "Reviews") comes into view, since what we want is above
+        containing `stop_at` (e.g. "Reviews") comes into view, since what we want is above
         it. Best effort: a page without the content carries on without it."""
         try:
             for _ in range(MAX_LAZY_STEPS):
@@ -199,7 +199,7 @@ class BrowserClient:
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
-        it appears, or until a heading starting with `stop_at` comes into view. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
+        it appears, or until a heading containing `stop_at` comes into view. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
         until their number stops growing and raises if it never does."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()

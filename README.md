@@ -142,7 +142,7 @@ which is much cheaper to find out here than after a full crawl. Delete
 Fragrantica redesigned its pages after the original data was collected, so
 `perfumes_scraper.py` reads both layouts (the new one first). Accords and notes are in
 the page HTML. Longevity and sillage are drawn by the page's script, so the browser client
-scrolls down until they appear (or the "Reviews" heading comes into view, or about ten seconds pass) before reading the page. The site
+scrolls down until they appear (or a "Reviews" heading comes into view, or about ten seconds pass; the page as served only has empty boxes, so it waits for the drawn rows) before reading the page. The site
 shows large counts abbreviated (`2.6k`), so those votes are stored as rounded integers
 (2600). Its levels (very weak..eternal, intimate..enormous) are stored by position under
 the original names (`poor`..`very long lasting`, `soft`..`enormous`). A perfume with no
