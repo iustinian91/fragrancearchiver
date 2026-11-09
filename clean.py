@@ -48,11 +48,13 @@ BRAND_ALIASES = {
 }
 
 # Accepted aliases for each note bucket, in priority order. The scraper emits
-# {"top","middle","base"}, or {"general": [...]} for pages without a pyramid.
+# {"top","middle","base"}, or {"general": [...]} for pages without a pyramid. The flat list
+# keeps its own "general" bucket: the site does not say which notes are top, middle or base.
 NOTE_BUCKETS = (
     ("top", ("top", "head")),
-    ("middle", ("middle", "heart", "general")),
+    ("middle", ("middle", "heart")),
     ("base", ("base", "drydown")),
+    ("general", ("general",)),
 )
 
 
@@ -160,10 +162,10 @@ def _clean_list(items):
 
 # ---------- parsing fields ----------
 def _parse_notes(raw):
-    """Return {"top": [...], "middle": [...], "base": [...]} from a notes dict or its JSON text."""
+    """Return {"top", "middle", "base", "general": [...]} from a notes dict or its JSON text."""
     if isinstance(raw, str):
         raw = _json_or_dict(raw)  # the scraper stores missing notes as the text 'null'
-    notes = {"top": [], "middle": [], "base": []}
+    notes = {bucket: [] for bucket, _ in NOTE_BUCKETS}
     if not isinstance(raw, dict):
         return notes
     # normalize keys: older scraper output contained "top " (trailing space)
@@ -271,7 +273,7 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
             "year": year,
             "image": _best_image(p),
             "main_accords": main_accords,
-            "notes": notes,                 # {top, middle, base}
+            "notes": notes,                 # {top, middle, base, general}
             "charts": charts,               # {chart: {"votes": {...}, "share": {...}}}
             "popularity": popularity,
         })
@@ -285,7 +287,7 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
         with_year = sum(1 for x in final if x["year"] is not None)
         empty_name = sum(1 for x in final if not x["name"])
         avg_notes = (
-            sum(len(x["notes"]["top"]) + len(x["notes"]["middle"]) + len(x["notes"]["base"]) for x in final) / total
+            sum(len(group) for x in final for group in x["notes"].values()) / total
         ) if total else 0
         print("— REPORT —")
         print(f"Total: {total}")

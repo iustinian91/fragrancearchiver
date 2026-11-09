@@ -41,8 +41,6 @@ PERFUME_JS = r"""
   const launched = clean(document.body.innerText).match(/launched in (\d{4})/i);
   const endYear = clean(document.title).match(/(?:^|\D)((?:1[5-9]|20)\d\d)\s*$/);
   out.year = launched ? launched[1] : (endYear ? endYear[1] : null);
-  const decade = clean(document.body.innerText).match(/launched during the (\d{4})'?s/i);
-  out.decade = decade ? decade[1] + 's' : null;   // some pages only know the decade
 
   // main accords: the labels under the "main accords" heading, in the order shown
   const accHead = [...document.querySelectorAll('h6')].find(h => /^main accords$/i.test(text(h)));
@@ -167,10 +165,7 @@ def compare_identity(stored, shown):
         "brand_source={}".format(stored["brand_source"])))
 
     if shown["year"] is None and stored["year"] is None:
-        decade = shown.get("decade")
-        checks.append(_check("year", UNAVAILABLE, (
-            "the page only gives the decade ({})".format(decade) if decade else "no year shown on the page"
-        )))
+        checks.append(_check("year", UNAVAILABLE, "year unknown: none on the page"))
     else:
         checks.append(_check("year", PASS if stored["year"] == shown["year"] else FAIL,
                              "stored {!r}; page {!r}".format(stored["year"], shown["year"])))

@@ -130,11 +130,11 @@ bad_flat = so.compare_notes({"general": ["Milk"]}, {"notes": {"general": ["Milk"
 assert bad_flat[0]["status"] == so.FAIL
 # the stored list must not be ignored when the page shows nothing
 assert so.compare_notes({"general": ["Milk"]}, {"notes": {}})[0]["status"] == so.FAIL
-# a page that only names the decade is reported as such
+# a page with no year is reported as unknown, not as a failure
 identity = so.compare_identity(
     {"title": "T", "brand": "B", "title_source": "page", "brand_source": "page", "year": None},
-    {"title": "T B for women", "brand": "B", "year": None, "decade": "2000s"},
+    {"title": "T B for women", "brand": "B", "year": None},
 )
 year = next(c for c in identity if c["field"] == "year")
-assert year["status"] == so.UNAVAILABLE and "2000s" in year["detail"], year
-print("flat note lists and decade-only years OK")
+assert year["status"] == so.UNAVAILABLE and "unknown" in year["detail"], year
+print("flat note lists and unknown years OK")

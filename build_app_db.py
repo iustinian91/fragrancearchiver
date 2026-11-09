@@ -44,7 +44,7 @@ def main():
 
     CREATE TABLE notes(
       perfume_id TEXT NOT NULL,
-      kind TEXT CHECK(kind IN ('top','middle','base')) NOT NULL,
+      kind TEXT CHECK(kind IN ('top','middle','base','general')) NOT NULL,
       note TEXT NOT NULL,
       PRIMARY KEY (perfume_id, kind, note),
       FOREIGN KEY (perfume_id) REFERENCES perfumes(id) ON DELETE CASCADE
@@ -98,7 +98,7 @@ def main():
         ))
 
         all_notes = []
-        for kind in ("top", "middle", "base"):
+        for kind in ("top", "middle", "base", "general"):
             for n in p.get("notes", {}).get(kind, []):
                 note_rows.append((p["id"], kind, n))
                 all_notes.append(n)

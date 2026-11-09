@@ -109,9 +109,10 @@ with tempfile.TemporaryDirectory() as tmp:
             raise AssertionError("bad data accepted")
         assert Path("app.db").read_text() == "previous good build"
         with open("perfumes_clean.json", "w") as f:
-            f.write('[{"id": "1", "brand": "B", "name": "N", "slug": "b-n"}]')
+            f.write('[{"id": "1", "brand": "B", "name": "N", "slug": "b-n", "notes": {"general": ["Milk"]}}]')
         build_app_db.main()
         assert sqlite3.connect("app.db").execute("select count(*) from perfumes").fetchone()[0] == 1
+        assert sqlite3.connect("app.db").execute("select kind, note from notes").fetchall() == [("general", "Milk")]
         assert not Path("app.db.building").exists()
     finally:
         os.chdir(old)

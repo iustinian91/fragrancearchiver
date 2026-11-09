@@ -375,8 +375,10 @@ def stage_pipeline(report):
     report.add(stage, "", "database integrity", PASS if conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok" else FAIL)
     bad = conn.execute("SELECT COUNT(*) FROM perfume_votes WHERE share < 0 OR share > 1 OR votes < 0").fetchone()[0]
     report.add(stage, "", "vote shares between 0 and 1", PASS if bad == 0 else FAIL, "{} out of range".format(bad))
-    notes = conn.execute("SELECT COUNT(DISTINCT kind) FROM notes").fetchone()[0]
-    report.add(stage, "", "top, middle and base notes present", PASS if notes == 3 else FAIL, "{} note groups".format(notes))
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT kind FROM notes")}
+    report.add(stage, "", "notes saved in top/middle/base/general groups",
+               PASS if kinds and kinds <= {"top", "middle", "base", "general"} else FAIL,
+               "groups found: {}".format(", ".join(sorted(kinds)) or "none"))
     wrong = conn.execute("""SELECT COUNT(*) FROM perfumes p WHERE p.popularity !=
         COALESCE((SELECT SUM(votes) FROM perfume_votes v WHERE v.perfume_id = p.id AND v.chart = 'longevity'), 0)""").fetchone()[0]
     report.add(stage, "", "popularity == longevity votes", PASS if wrong == 0 else FAIL, "{} differ".format(wrong))
