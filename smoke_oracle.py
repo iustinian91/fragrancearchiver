@@ -97,10 +97,11 @@ PERFUME_JS = r"""
 NOTE_JS = r"""
 () => {
   const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+  // the note's own photos (/mdimg/sastojci/...), not the perfume thumbnails further down
   const imgs = [...document.querySelectorAll('img')]
-    .filter(i => i.complete && i.naturalWidth >= 40 && /mdimg|notes?\//i.test(i.src))
-    .map(i => i.src);
-  return {title: clean((document.querySelector('h1') || {}).innerText), images: imgs};
+    .filter(i => i.offsetParent !== null && /\/mdimg\/sastojci\/[a-z]\d*\.\d+\.jpe?g/i.test(i.getAttribute('src') || ''))
+    .map(i => new URL(i.getAttribute('src'), location.href).pathname.split('/').pop());
+  return {title: clean((document.querySelector('h1') || {}).innerText), images: [...new Set(imgs)]};
 }
 """
 
@@ -303,16 +304,21 @@ def image_problem(path):
 
 # ---------------------------------------------------------------- notes pages
 def compare_note(title, image_names, shown, problems_by_name):
+    """A note page: its title, and that the stored image names are exactly the photos the page
+    shows, in order, each downloaded as a real image."""
     checks = []
     h1 = shown["title"]
     checks.append(_check("title", PASS if title and _norm(title) == _norm(h1) else FAIL,
                          "stored {!r}; page heading {!r}".format(title, h1)))
-    if not image_names:
-        status = UNAVAILABLE if not shown["images"] else FAIL
-        checks.append(_check("images", status, "stored none; page shows {} large image(s)".format(len(shown["images"]))))
-    else:
-        bad = {n: p for n, p in problems_by_name.items() if p}
-        checks.append(_check("images", FAIL if bad else PASS,
-                             "; ".join("{}: {}".format(n, p) for n, p in bad.items()) or
-                             "{} image(s) downloaded and valid".format(len(image_names))))
+    if not image_names and not shown["images"]:
+        checks.append(_check("images", UNAVAILABLE, "the page shows no photos"))
+        return checks
+    # the page may give photo URLs or bare file names; compare file names (the query is a cache-buster)
+    page_names = [str(u).split("?")[0].rsplit("/", 1)[-1] for u in shown["images"]]
+    checks.append(_check("image names", PASS if list(image_names) == page_names else FAIL,
+                         "stored {}; page shows {}".format(list(image_names), page_names)))
+    bad = {n: p for n, p in problems_by_name.items() if p}
+    checks.append(_check("image files", FAIL if bad or not image_names else PASS,
+                         "; ".join("{}: {}".format(n, p) for n, p in bad.items()) or
+                         "{} image(s) downloaded and valid".format(len(image_names))))
     return checks

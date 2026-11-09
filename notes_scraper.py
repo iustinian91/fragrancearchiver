@@ -2,28 +2,44 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import NotesDBHelper
 
 IMAGE_DIR = Path("fragrantica_images/notes")
+# The note's own photos: .../mdimg/sastojci/t.75.jpg, t2.75.jpg, t3.75.jpg (up to three per note).
+# The page also shows many other pictures (thumbnails of perfumes), which must not match.
+NOTE_PHOTO = re.compile(r"/mdimg/sastojci/[a-z]\d*\.\d+\.jpe?g$", re.IGNORECASE)
+
+
+def note_photo_urls(tree, page_url):
+    """Absolute URLs of the note's photos, in page order, without repeats."""
+    sources = tree.xpath("//img/@src")
+    if not any(NOTE_PHOTO.search(urlsplit(src).path) for src in sources):
+        sources = tree.xpath("//h3/following-sibling::div/div/img/@src")  # layout used until 2022
+        return list(dict.fromkeys(urljoin(page_url, src) for src in sources))
+    return list(dict.fromkeys(
+        urljoin(page_url, src) for src in sources if NOTE_PHOTO.search(urlsplit(src).path)
+    ))
 
 
 def scrape_note(client, url):
     """Fetch one note page and save its images. Returns (title, image file names)."""
     tree = client.fetch_tree(url)
-    titles = tree.xpath("//h1/text()")
+    titles = [" ".join(t.split()) for t in tree.xpath("//h1/text()") if t.strip()]
     if not titles:
         raise ValueError("No title found on {}".format(url))
 
     note_title = titles[0]
     note_image_file_names = []
-    for image_url in tree.xpath("//h3/following-sibling::div/div/img/@src"):
-        image_file_name = image_url.split("/")[-1]
+    for image_url in note_photo_urls(tree, url):
+        # The file name is the URL's path; the query string is only a cache-buster.
+        image_file_name = urlsplit(image_url).path.rsplit("/", 1)[-1]
         note_image_file_names.append(image_file_name)
-        client.download_image(urljoin(url, image_url), IMAGE_DIR / image_file_name)
+        client.download_image(image_url, IMAGE_DIR / image_file_name)
 
     return note_title, note_image_file_names
 

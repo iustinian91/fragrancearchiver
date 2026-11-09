@@ -107,3 +107,17 @@ with tempfile.TemporaryDirectory() as tmp:
     assert so.image_problem(tmp / "cut.png") is not None
     assert so.image_problem(tmp / "absent.jpg") == "file is missing"
 print("image validation catches missing, empty, wrong-type and truncated files OK")
+
+# note pages: a real page's displayed photos against what was stored
+shown_note = {"title": "Bergamot", "images": [
+    "https://fimgs.net/mdimg/sastojci/t.75.jpg?1733161295",
+    "https://www.fragrantica.com/mdimg/sastojci/t2.75.jpg?1733161288",
+    "https://www.fragrantica.com/mdimg/sastojci/t3.75.jpg?1733161293"]}
+names = ["t.75.jpg", "t2.75.jpg", "t3.75.jpg"]
+good = so.compare_note("Bergamot", names, shown_note, dict.fromkeys(names))
+assert all(c["status"] == so.PASS for c in good), good
+assert so.compare_note("Bergamot", names[:2], shown_note, dict.fromkeys(names[:2]))[1]["status"] == so.FAIL
+assert so.compare_note("Bergamot ", names, {**shown_note, "title": "Bergamot Oil"}, dict.fromkeys(names))[0]["status"] == so.FAIL
+assert so.compare_note("X", [], {"title": "X", "images": []}, {})[1]["status"] == so.UNAVAILABLE
+assert so.compare_note("Bergamot", names, shown_note, {**dict.fromkeys(names), "t2.75.jpg": "file is missing"})[2]["status"] == so.FAIL
+print("note page comparison OK")
