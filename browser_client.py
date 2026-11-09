@@ -8,7 +8,8 @@ from time import sleep
 from urllib.parse import urljoin, urlsplit
 
 from lxml import html
-from patchright.sync_api import Error as PatchrightError, sync_playwright
+from patchright.sync_api import Error as PatchrightError
+from patchright.sync_api import sync_playwright
 
 BASE_URL = "https://www.fragrantica.com"
 SITE_HOSTS = {urlsplit(BASE_URL).netloc, urlsplit(BASE_URL).netloc.removeprefix("www.")}
@@ -217,8 +218,9 @@ class BrowserClient:
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
-        it appears, or until a heading containing `stop_at` comes into view. `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls
-        until their number stops growing and raises if it never does."""
+        it appears, or until a heading containing `stop_at` comes into view.
+        `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls until
+        their number stops growing and raises if it never does."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
             response = self.page.goto(

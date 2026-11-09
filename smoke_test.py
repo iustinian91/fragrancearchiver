@@ -37,7 +37,7 @@ import smoke_oracle as so  # noqa: E402
 from browser_client import BASE_URL, BrowserClient  # noqa: E402
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
-BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.I)
+BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.IGNORECASE)
 PERFUME_URL = re.compile(r"https://www\.fragrantica\.com/perfume/[^/?#]+/[^/?#]+-(\d+)\.html")
 PRODUCTION = ("perfumes.sqlite", "notes.sqlite", "app.db", "perfumes.json", "perfumes_clean.json",
               "perfumes_manifest.txt", "perfumes_manifest.txt.tmp", "perfumes_manifest.state.json",
@@ -145,8 +145,8 @@ def save_failure(workdir, name, page):
         folder = workdir / "failures"
         folder.mkdir(exist_ok=True)
         (folder / (name + ".html")).write_text(page.content(), encoding="utf-8")
-    except Exception:   # a failure artifact must never hide the real failure
-        pass
+    except Exception as exc:   # a failure artifact must never hide the real failure
+        print("(could not save the failure page: {})".format(exc))
 
 
 # ---------------------------------------------------------------------------- stages

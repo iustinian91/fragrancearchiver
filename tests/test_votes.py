@@ -16,26 +16,32 @@ except ImportError:  # only the import is needed here, not a browser
 
 import perfumes_scraper as ps  # noqa: E402
 
+
+def page_votes(tree):
+    charts = ps.page_charts(tree)
+    return charts["longevity"], charts["sillage"]
+
+
 tree = html.fromstring((ROOT / "tests/fixtures/performance_section.html").read_text(encoding="utf-8"))
 # a second real page, the cards as rendered in the browser (Black Orchid); it also has Gender
 # and Price Value cards, which must be ignored
 orchid = html.fromstring((ROOT / "tests/fixtures/performance_cards_black_orchid.html").read_text(encoding="utf-8"))
-assert ps.page_votes(orchid)[0]["very long lasting"] == "5300" and ps.page_votes(orchid)[1]["enormous"] == "4000"
+assert page_votes(orchid)[0]["very long lasting"] == "5300" and page_votes(orchid)[1]["enormous"] == "4000"
 # the page as served has empty cards: that must read as "no votes yet", not as an error
 served = html.fromstring('<div class="tw-perf-card"><div class="p-4"><longevity-rating-new/></div></div>')
-assert ps.page_votes(served) == (None, None)
-longevity, sillage = ps.page_votes(tree)
+assert page_votes(served) == (None, None)
+longevity, sillage = page_votes(tree)
 assert longevity == {"poor": "216", "weak": "403", "moderate": "2600", "long lasting": "6000",
                      "very long lasting": "5300"}, longevity
 assert sillage == {"soft": "620", "moderate": "3600", "heavy": "6600", "enormous": "4000"}, sillage
 assert ps.parse_count("1,234") == 1234 and ps.parse_count("1.2M") == 1200000 and ps.parse_count("x") is None
-assert ps.page_votes(html.fromstring("<html><body><p>nothing</p></body></html>")) == (None, None)
+assert page_votes(html.fromstring("<html><body><p>nothing</p></body></html>")) == (None, None)
 zero = html.fromstring(
     ps_html := (ROOT / "tests/fixtures/performance_section.html").read_text(encoding="utf-8")
 )
 for span in zero.xpath("//span[contains(@class,'text-[10px]')]"):
     span.text = "0"
-assert ps.page_votes(zero) == (None, None), "no votes at all is stored as missing"
+assert page_votes(zero) == (None, None), "no votes at all is stored as missing"
 
 # ---- scrolling for the vote cards stops at the Reviews heading ----
 import browser_client as bc  # noqa: E402

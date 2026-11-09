@@ -8,7 +8,11 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 from browser_client import (
-    BASE_URL, FETCH_ERRORS, BrowserClient, CloudflareChallengeError, matching_urls,
+    BASE_URL,
+    FETCH_ERRORS,
+    BrowserClient,
+    CloudflareChallengeError,
+    matching_urls,
 )
 
 OUTPUT_PATH = Path("perfumes_manifest.txt")

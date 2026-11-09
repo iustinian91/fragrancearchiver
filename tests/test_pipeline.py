@@ -55,7 +55,8 @@ with tempfile.TemporaryDirectory() as tmp:
     db.close()
     export.export_to_json()
     clean.clean(report=False)
-    data = json.load(open("perfumes_clean.json", encoding="utf-8"))
+    with open("perfumes_clean.json", encoding="utf-8") as clean_file:
+        data = json.load(clean_file)
     p = next(x for x in data if x["name"] == "Black Orchid")
     lon = p["charts"]["longevity"]
     assert abs(sum(lon["share"].values()) - 1) < 1e-3 and lon["votes"]["moderate"] == 2600

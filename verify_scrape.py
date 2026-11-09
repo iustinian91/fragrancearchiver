@@ -72,9 +72,8 @@ def main():
     args = ap.parse_args()
 
     rows, progress = load(args.db)
-    urls = list(dict.fromkeys(
-        line.strip() for line in open(args.manifest, encoding="utf-8") if line.strip()
-    ))
+    with open(args.manifest, encoding="utf-8") as manifest:
+        urls = list(dict.fromkeys(line.strip() for line in manifest if line.strip()))
     problems = 0
     print("Rows: {}   Manifest URLs: {}".format(len(rows), len(urls)))
 

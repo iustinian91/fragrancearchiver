@@ -264,12 +264,6 @@ def page_charts(tree):
     return charts
 
 
-def page_votes(tree):
-    """(longevity, sillage) only; see page_charts."""
-    charts = page_charts(tree)
-    return charts["longevity"], charts["sillage"]
-
-
 def scrape_perfume(client, url):
     """Fetch and parse one perfume page. Returns (perfume dict, record tuple)."""
     match = PERFUME_URL.search(url)
