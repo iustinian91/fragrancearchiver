@@ -116,3 +116,14 @@ with tempfile.TemporaryDirectory() as tmp:
     finally:
         os.chdir(old)
 print("failed app.db build keeps the previous database OK")
+
+# the brand as the heading spells it, when the URL still carries an older brand name
+moved = html.fromstring(
+    "<html><head><title>T</title></head><body><nav><a href='/designers/Dior.html'>Dior</a></nav>"
+    "<h1> Made in Heaven What We Do Is Secret <small>for women</small></h1>"
+    "<a href='/designers/What-We-Do-Is-Secret.html'>What We Do Is Secret</a>"
+    "<a href='/designers/'>Designers</a></body></html>"
+)
+assert ps.heading_brand(moved) == "What We Do Is Secret"
+assert ps.heading_brand(html.fromstring("<html><body><h1>X</h1></body></html>")) is None
+print("brand taken from the page heading when the URL is out of date OK")

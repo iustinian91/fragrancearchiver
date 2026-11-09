@@ -186,7 +186,8 @@ LONGEVITY_KEYS = ("poor", "weak", "moderate", "long lasting", "very long lasting
 SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
 # The page as served already contains empty .tw-perf-card boxes; the vote rows (.space-y-2)
 # only appear once the page's script has drawn them, so wait for those.
-VOTES_READY = ".tw-perf-card .space-y-2"
+VOTES_BOX = ".tw-perf-card"
+VOTES_READY = VOTES_BOX + " .space-y-2"
 VOTES_STOP_AT = "Reviews"  # a heading such as "All Reviews By Date"; the cards are above it
 
 
@@ -264,6 +265,20 @@ def page_charts(tree):
     return charts
 
 
+def heading_brand(tree):
+    """The brand as the page's heading spells it, for pages whose URL carries an older brand
+    name ("A Lab on Fire" in the URL, "What We Do Is Secret" on the page): the designer link
+    whose text appears in the h1. None if there is none."""
+    heading = " ".join(" ".join(tree.xpath("(//h1)[1]//text()")).split())
+    for href_text in tree.xpath(
+        "//a[contains(@href, '/designers/')][substring(@href, string-length(@href) - 4) = '.html']//text()"
+    ):
+        text = " ".join(href_text.split())
+        if text and text in heading:
+            return text
+    return None
+
+
 def check_page(tree, url):
     """Raise ValueError unless this looks like a perfume page (a title and a heading).
 
@@ -283,11 +298,11 @@ def scrape_perfume(client, url):
 
     url_brand = match.group("brand").replace("-", " ")
     url_title = match.group("title").replace("-", " ")
-    tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT)
+    tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT, lazy_boxes=VOTES_BOX)
     check_page(tree, url)
 
     names = page_name_candidates(tree)
-    page_brand = find_name(names, url_brand)
+    page_brand = find_name(names, url_brand) or heading_brand(tree)
     page_title_name = find_name(names, url_title)
     brand = page_brand or url_brand
 

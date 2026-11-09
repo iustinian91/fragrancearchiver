@@ -24,6 +24,8 @@ SCROLL_STEP_WAIT_MS = 500
 STABLE_SCROLL_CHECKS = 3
 MAX_SCROLL_STEPS = 150
 MAX_LAZY_STEPS = 20
+BOX_FILL_WAIT_MS = 3000      # how long a placeholder box gets to fill in once it is on screen
+BOX_RETRY_WAIT_MS = 1000     # after one box has timed out, give the others only this long
 HEADLESS = False
 
 
@@ -228,13 +230,36 @@ class BrowserClient:
         except PatchrightError:
             pass
 
-    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None):
+    def _fill_boxes(self, box_selector, filled_selector):
+        """Bring each placeholder box (e.g. a vote card) into view and wait for the page's own
+        script to draw `filled_selector` inside it. Returns how many boxes there are; 0 means
+        the page has none. A box that never fills (no votes) just times out, and the boxes
+        after it get a short wait only."""
+        boxes = self.page.locator(box_selector)
+        count = boxes.count()
+        wait_ms = BOX_FILL_WAIT_MS
+        for index in range(count):
+            box = boxes.nth(index)
+            try:
+                box.scroll_into_view_if_needed(timeout=5000)
+                box.locator(filled_selector).first.wait_for(state="attached", timeout=wait_ms)
+                self.page.wait_for_timeout(300)   # let the rest of the rows finish
+            except PatchrightError:
+                wait_ms = BOX_RETRY_WAIT_MS
+        return count
+
+    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
+                   lazy_boxes=None):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
         it appears, or until a heading containing `stop_at` comes into view.
         `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls until
-        their number stops growing and raises if it never does."""
+        their number stops growing and raises if it never does.
+        `lazy_boxes`: CSS selector of placeholder boxes the page fills in when they are
+        scrolled into view; each is brought into view and given time to fill (`wait_for` is the
+        selector that appears inside a filled box). Pages without such boxes fall back to
+        scrolling for `wait_for`."""
         for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             self._pace_request()
             response = self.page.goto(
@@ -266,7 +291,14 @@ class BrowserClient:
             if scroll_for:
                 self._scroll_until_stable(scroll_for)
             if wait_for:
-                self._wait_for_lazy(wait_for, stop_at)
+                boxes = 0
+                if lazy_boxes:
+                    try:
+                        boxes = self._fill_boxes(lazy_boxes, wait_for.replace(lazy_boxes, "").strip() or wait_for)
+                    except PatchrightError:
+                        boxes = 0
+                if not boxes:
+                    self._wait_for_lazy(wait_for, stop_at)
             return html.fromstring(self.page.content())
         raise RuntimeError(
             "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
