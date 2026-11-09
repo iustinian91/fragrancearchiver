@@ -121,3 +121,20 @@ assert so.compare_note("Bergamot ", names, {**shown_note, "title": "Bergamot Oil
 assert so.compare_note("X", [], {"title": "X", "images": []}, {})[1]["status"] == so.UNAVAILABLE
 assert so.compare_note("Bergamot", names, shown_note, {**dict.fromkeys(names), "t2.75.jpg": "file is missing"})[2]["status"] == so.FAIL
 print("note page comparison OK")
+
+# a page without a pyramid shows one flat list; it is compared, not skipped
+flat = {"general": ["Milk", "Caramel", "Vanilla"]}
+good_flat = so.compare_notes(flat, {"notes": {"general": ["Milk", "Caramel", "Vanilla"]}})
+assert [c["status"] for c in good_flat] == [so.PASS], good_flat
+bad_flat = so.compare_notes({"general": ["Milk"]}, {"notes": {"general": ["Milk", "Caramel", "Vanilla"]}})
+assert bad_flat[0]["status"] == so.FAIL
+# the stored list must not be ignored when the page shows nothing
+assert so.compare_notes({"general": ["Milk"]}, {"notes": {}})[0]["status"] == so.FAIL
+# a page that only names the decade is reported as such
+identity = so.compare_identity(
+    {"title": "T", "brand": "B", "title_source": "page", "brand_source": "page", "year": None},
+    {"title": "T B for women", "brand": "B", "year": None, "decade": "2000s"},
+)
+year = next(c for c in identity if c["field"] == "year")
+assert year["status"] == so.UNAVAILABLE and "2000s" in year["detail"], year
+print("flat note lists and decade-only years OK")

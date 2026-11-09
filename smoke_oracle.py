@@ -41,6 +41,8 @@ PERFUME_JS = r"""
   const launched = clean(document.body.innerText).match(/launched in (\d{4})/i);
   const endYear = clean(document.title).match(/(?:^|\D)((?:1[5-9]|20)\d\d)\s*$/);
   out.year = launched ? launched[1] : (endYear ? endYear[1] : null);
+  const decade = clean(document.body.innerText).match(/launched during the (\d{4})'?s/i);
+  out.decade = decade ? decade[1] + 's' : null;   // some pages only know the decade
 
   // main accords: the labels under the "main accords" heading, in the order shown
   const accHead = [...document.querySelectorAll('h6')].find(h => /^main accords$/i.test(text(h)));
@@ -49,15 +51,16 @@ PERFUME_JS = r"""
       .map(text).filter(t => t);
   }
 
-  // notes: walk the page in document order; each note label belongs to the closest heading above
+  // notes: walk the pyramid in document order; each note label belongs to the closest
+  // "Top/Middle/Base Notes" heading above it. A page without those headings shows one flat list.
   let level = null;
   document.querySelectorAll('h4, .pyramid-note-label').forEach(el => {
     if (el.tagName === 'H4') {
       const m = text(el).toLowerCase().match(/^(top|middle|base) notes?/);
-      level = m ? m[1] : (/notes?/i.test(text(el)) ? 'general' : level);
-    } else if (level) {
+      if (m) level = m[1];
+    } else {
       const t = text(el);
-      if (t) (out.notes[level] = out.notes[level] || []).push(t);
+      if (t) (out.notes[level || 'general'] = out.notes[level || 'general'] || []).push(t);
     }
   });
 
@@ -164,7 +167,10 @@ def compare_identity(stored, shown):
         "brand_source={}".format(stored["brand_source"])))
 
     if shown["year"] is None and stored["year"] is None:
-        checks.append(_check("year", UNAVAILABLE, "no year shown on the page"))
+        decade = shown.get("decade")
+        checks.append(_check("year", UNAVAILABLE, (
+            "the page only gives the decade ({})".format(decade) if decade else "no year shown on the page"
+        )))
     else:
         checks.append(_check("year", PASS if stored["year"] == shown["year"] else FAIL,
                              "stored {!r}; page {!r}".format(stored["year"], shown["year"])))
@@ -185,6 +191,8 @@ def compare_notes(stored, shown):
         return [_check("notes", UNAVAILABLE, "no notes shown on the page")]
     checks = []
     stored = stored or {}
+    if not shown_notes and any(stored.values()):
+        return [_check("notes", FAIL, "stored {}; the page shows no notes".format(stored))]
     if set(shown_notes) <= {"top", "middle", "base"}:
         for level in ("top", "middle", "base"):
             want, got = shown_notes.get(level) or [], stored.get(level) or []
