@@ -1,5 +1,6 @@
 """Shared Patchright browser helpers for the FragranceArchiver crawlers."""
 
+import os
 import random
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -67,6 +68,19 @@ def cloudflare_challenge_reason(page):
     if any(phrase in body_text for phrase in phrases):
         return "Cloudflare verification text detected in page body"
 
+    return None
+
+
+MISSING_IMAGE_STATUSES = (404, 410)
+IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF8", b"RIFF")  # jpeg, png, gif, webp
+
+
+def image_problem(data):
+    """Why `data` cannot be an image file, or None if it looks like one."""
+    if not data:
+        return "empty response"
+    if not data.startswith(IMAGE_SIGNATURES):
+        return "not an image (starts with {!r})".format(data[:12])
     return None
 
 
@@ -261,10 +275,15 @@ class BrowserClient:
         )
 
     def download_image(self, image_url, destination):
-        """Download an image, retrying HTTP 429 after the required cooldown."""
+        """Download an image, retrying HTTP 429 after the required cooldown.
+
+        Returns True when the file is on disk afterwards. A picture the site no longer has
+        (404/410) is reported and skipped, returning False, so one broken link does not stop a
+        crawl. Anything else that goes wrong raises. The file is written under a temporary name
+        and renamed, so a crash never leaves a truncated image that a later run would trust."""
         destination = Path(destination)
         if destination.exists():
-            return
+            return True
 
         destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -282,6 +301,10 @@ class BrowserClient:
                         )
                     continue
 
+                if response.status in MISSING_IMAGE_STATUSES:
+                    print("Image not available (HTTP {}): {}".format(response.status, image_url), flush=True)
+                    return False
+
                 if not response.ok:
                     raise RuntimeError(
                         "HTTP {} downloading image {}".format(
@@ -289,8 +312,14 @@ class BrowserClient:
                         )
                     )
 
-                destination.write_bytes(response.body())
-                return
+                data = response.body()
+                problem = image_problem(data)
+                if problem:
+                    raise RuntimeError("Bad image from {}: {}".format(image_url, problem))
+                partial = destination.with_name(destination.name + ".part")
+                partial.write_bytes(data)
+                os.replace(partial, destination)
+                return True
             finally:
                 response.dispose()
         raise RuntimeError(

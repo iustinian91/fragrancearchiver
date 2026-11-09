@@ -1,0 +1,118 @@
+"""Offline checks: image downloads, page validation and the app.db build fail safely."""
+import os
+import sqlite3
+import sys
+import tempfile
+import types
+from pathlib import Path
+
+from lxml import html
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.dont_write_bytecode = True
+try:
+    import patchright.sync_api  # noqa: F401
+except ImportError:  # the checks below never open a browser
+    stub = types.ModuleType("patchright.sync_api")
+    stub.Error, stub.sync_playwright = type("Error", (Exception,), {}), None
+    sys.modules["patchright"], sys.modules["patchright.sync_api"] = types.ModuleType("patchright"), stub
+
+import browser_client as bc  # noqa: E402
+import perfumes_scraper as ps  # noqa: E402
+
+bc.sleep = lambda s: None
+bc.random.uniform = lambda a, b: 0.0
+JPEG = b"\xff\xd8\xff\xe0" + b"x" * 2000
+
+
+class Response:
+    def __init__(self, status, body=b"", headers=None):
+        self.status, self._body, self.headers = status, body, headers or {}
+        self.ok = 200 <= status < 300
+
+    def body(self):
+        return self._body
+
+    def dispose(self):
+        pass
+
+
+class Context:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.request = self
+
+    def get(self, url, timeout=None):
+        return self.responses.pop(0)
+
+
+def client_with(*responses):
+    client = bc.BrowserClient.__new__(bc.BrowserClient)
+    client.timeout_ms = 1000
+    client.context = Context(responses)
+    return client
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = Path(tmp)
+    # a good image is written, and no temporary file is left behind
+    assert client_with(Response(200, JPEG)).download_image("u", tmp / "a.jpg") is True
+    assert (tmp / "a.jpg").read_bytes() == JPEG and not list(tmp.glob("*.part"))
+    # a missing picture is skipped, not fatal
+    assert client_with(Response(404)).download_image("u", tmp / "b.jpg") is False
+    assert not (tmp / "b.jpg").exists()
+    # empty and non-image bodies are refused and leave nothing on disk
+    for body in (b"", b"<html>blocked</html>"):
+        try:
+            client_with(Response(200, body)).download_image("u", tmp / "c.jpg")
+        except RuntimeError as exc:
+            assert "Bad image" in str(exc)
+        else:
+            raise AssertionError("bad image accepted")
+        assert not (tmp / "c.jpg").exists() and not list(tmp.glob("*.part"))
+    # other HTTP errors still stop the crawl
+    try:
+        client_with(Response(403)).download_image("u", tmp / "d.jpg")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("403 ignored")
+print("image downloads: atomic, validated, 404 skipped OK")
+
+page = html.fromstring("<html><head><title>X</title></head><body><h1>X</h1></body></html>")
+ps.check_page(page, "u")
+for bad in ("<html><body></body></html>", "<html><head><title>T</title></head><body></body></html>"):
+    try:
+        ps.check_page(html.fromstring(bad), "u")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("blank page accepted")
+print("blank pages are refused before being marked complete OK")
+
+import build_app_db  # noqa: E402
+
+old = os.getcwd()
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    try:
+        with open("app.db", "w") as f:
+            f.write("previous good build")
+        with open("perfumes_clean.json", "w") as f:
+            f.write('[{"id": "1"}]')   # missing fields: the build fails part way
+        try:
+            build_app_db.main()
+        except KeyError:
+            pass
+        else:
+            raise AssertionError("bad data accepted")
+        assert Path("app.db").read_text() == "previous good build"
+        with open("perfumes_clean.json", "w") as f:
+            f.write('[{"id": "1", "brand": "B", "name": "N", "slug": "b-n"}]')
+        build_app_db.main()
+        assert sqlite3.connect("app.db").execute("select count(*) from perfumes").fetchone()[0] == 1
+        assert not Path("app.db.building").exists()
+    finally:
+        os.chdir(old)
+print("failed app.db build keeps the previous database OK")

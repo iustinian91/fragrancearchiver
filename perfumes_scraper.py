@@ -264,6 +264,17 @@ def page_charts(tree):
     return charts
 
 
+def check_page(tree, url):
+    """Raise ValueError unless this looks like a perfume page (a title and a heading).
+
+    A blocked, error or half-loaded page has neither; saving it would mark the URL complete
+    with an empty record that no later run revisits."""
+    has_title = " ".join(tree.xpath("//title/text()")).strip()
+    has_heading = " ".join(tree.xpath("(//h1)[1]//text()")).strip()
+    if not (has_title and has_heading):
+        raise ValueError("{} does not look like a perfume page (no title or heading)".format(url))
+
+
 def scrape_perfume(client, url):
     """Fetch and parse one perfume page. Returns (perfume dict, record tuple)."""
     match = PERFUME_URL.search(url)
@@ -273,6 +284,7 @@ def scrape_perfume(client, url):
     url_brand = match.group("brand").replace("-", " ")
     url_title = match.group("title").replace("-", " ")
     tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT)
+    check_page(tree, url)
 
     names = page_name_candidates(tree)
     page_brand = find_name(names, url_brand)

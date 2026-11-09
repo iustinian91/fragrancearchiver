@@ -38,8 +38,9 @@ def scrape_note(client, url):
     for image_url in note_photo_urls(tree, url):
         # The file name is the URL's path; the query string is only a cache-buster.
         image_file_name = urlsplit(image_url).path.rsplit("/", 1)[-1]
+        if client.download_image(image_url, IMAGE_DIR / image_file_name) is False:
+            continue  # the site no longer has this picture; don't list a file we don't have
         note_image_file_names.append(image_file_name)
-        client.download_image(image_url, IMAGE_DIR / image_file_name)
 
     return note_title, note_image_file_names
 

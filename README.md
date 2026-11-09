@@ -201,6 +201,7 @@ The run stops at the first HTTP 429/403, challenge page or list that never finis
 and reports it as BLOCKED; it does not try to get around it. Pages that fail a check are saved
 under `failures/` so selectors can be fixed from the real HTML. Exit status: 0 all passed,
 1 a check failed, 2 blocked. `python tests/test_smoke.py` tests the comparison logic offline.
+`python tests/test_robustness.py` checks that image downloads are atomic and validated (a 404 image is skipped, not fatal), that blank pages are refused before a URL is marked complete, and that a failed `app.db` build keeps the previous file.
 
 ## Pipeline
 

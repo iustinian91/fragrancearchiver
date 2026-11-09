@@ -30,3 +30,4 @@ perfumes_clean.json
 *.sqlite-shm
 smoke_run*/
 perfumes_manifest.empty.txt
+app.db.building*

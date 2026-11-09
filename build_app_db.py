@@ -11,13 +11,14 @@ def main():
     if not Path(DATA).exists():
         raise SystemExit(f"Missing {DATA}. Run clean.py first.")
 
-    # Also clear SQLite sidecar files: a stale -wal/-shm from an older WAL-mode build could
-    # otherwise be applied to the new database.
-    for path in (DB, DB + "-wal", DB + "-shm"):
+    # Build into a temporary file and swap it in at the end, so a failed build leaves the
+    # existing app.db untouched. Clear leftovers of an earlier failed build first.
+    building = DB + ".building"
+    for path in (building, building + "-wal", building + "-shm"):
         if os.path.exists(path):
             os.remove(path)
 
-    conn = sqlite3.connect(DB)
+    conn = sqlite3.connect(building)
     cur = conn.cursor()
 
     # One-shot build into a fresh file: a failed run is simply re-run from scratch, so skip the
@@ -138,6 +139,12 @@ def main():
         )
 
     conn.close()
+    # Also clear sidecar files of an older WAL-mode app.db: a stale -wal/-shm could otherwise
+    # be applied to the new database.
+    for suffix in ("-wal", "-shm"):
+        if os.path.exists(DB + suffix):
+            os.remove(DB + suffix)
+    os.replace(building, DB)
     print(f"✅ Built {DB} with {len(perf_rows)} perfumes")
 
 if __name__ == "__main__":
