@@ -128,3 +128,20 @@ moved = html.fromstring(
 assert ps.heading_brand(moved) == "What We Do Is Secret"
 assert ps.heading_brand(html.fromstring("<html><body><h1>X</h1></body></html>")) is None
 print("brand taken from the page heading when the URL is out of date OK")
+
+# a Cloudflare interstitial that clears on its own is waited out; one that does not still stops the crawl
+_real_reason = bc.cloudflare_challenge_reason
+class _Waiter:
+    def wait_for_timeout(self, ms):
+        pass
+_client = bc.BrowserClient.__new__(bc.BrowserClient)
+_client.page = _Waiter()
+for _clears_after, _expected in ((3, True), (10 ** 6, False)):
+    _calls = {"n": 0}
+    def _reason(page, _calls=_calls, _clears_after=_clears_after):
+        _calls["n"] += 1
+        return None if _calls["n"] >= _clears_after else "challenge"
+    bc.cloudflare_challenge_reason = _reason
+    assert _client._challenge_clears() is _expected
+bc.cloudflare_challenge_reason = _real_reason
+print("challenge pages that clear themselves are waited out, others still stop OK")

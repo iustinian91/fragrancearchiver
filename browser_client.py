@@ -17,6 +17,7 @@ SITE_HOSTS = {urlsplit(BASE_URL).netloc, urlsplit(BASE_URL).netloc.removeprefix(
 REQUEST_TIMEOUT_MS = 60000
 REQUEST_DELAYS = (2.5, 10.0)
 IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no need to wait as long
+CHALLENGE_WAIT_SECONDS = 20   # how long a Cloudflare "checking your browser" page may take to clear itself
 MAX_RATE_LIMIT_RETRIES = 5
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
@@ -244,6 +245,21 @@ class BrowserClient:
         except PatchrightError:
             pass
 
+    def _challenge_clears(self):
+        """Wait up to CHALLENGE_WAIT_SECONDS for a challenge page to go away on its own.
+        True if the page stopped looking like a challenge. Never interacts with it."""
+        deadline = CHALLENGE_WAIT_SECONDS * 1000
+        waited = 0
+        while waited < deadline:
+            self.page.wait_for_timeout(1000)
+            waited += 1000
+            try:
+                if cloudflare_challenge_reason(self.page) is None:
+                    return True
+            except PatchrightError:
+                return False
+        return False
+
     def _fill_boxes(self, box_selector, filled_selector, stop_at=None, expect_boxes=0):
         """Bring each placeholder box (e.g. a vote card) into view and wait until the page's own
         script has filled it with numbers. Returns how many boxes there are; 0 means the page
@@ -363,6 +379,11 @@ class BrowserClient:
                 continue
 
             challenge_reason = cloudflare_challenge_reason(self.page)
+            if challenge_reason and self._challenge_clears():
+                # The interstitial passed by itself, as it does in any browser that is left alone
+                # for a few seconds. Nothing was clicked or changed; the page we now have is the
+                # real one, so the status of the interstitial no longer applies.
+                challenge_reason, response = None, None
             if challenge_reason:
                 raise CloudflareChallengeError(
                     "{} while loading {} (HTTP {}; final URL: {}).".format(
@@ -370,7 +391,7 @@ class BrowserClient:
                     )
                 )
 
-            if response.status >= 400:
+            if response is not None and response.status >= 400:
                 detail = "HTTP {} for {}".format(response.status, url)
                 raise RuntimeError(detail)
 
