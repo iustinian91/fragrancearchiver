@@ -303,7 +303,7 @@ def stage_perfume_scrape(report, args, workdir, crawl_urls):
     with BrowserClient() as client:
         for number, url in enumerate(sample):
             client.fetch_tree(url)
-            patient_scroll(client.page, done_js=so.SCROLL_UNTIL_CHARTS_JS, max_steps=40)
+            patient_scroll(client.page, done_js=so.SCROLL_UNTIL_CHARTS_JS, max_steps=60)
             shown = client.page.evaluate(so.PERFUME_JS)
             verify_page(url, shown, client.page)
             if args.screenshots and number < args.screenshots:

@@ -24,8 +24,8 @@ SCROLL_STEP_WAIT_MS = 500
 STABLE_SCROLL_CHECKS = 3
 MAX_SCROLL_STEPS = 150
 MAX_LAZY_STEPS = 20
-BOX_FILL_WAIT_MS = 3000      # how long a placeholder box gets to fill in once it is on screen
-BOX_RETRY_WAIT_MS = 1000     # after one box has timed out, give the others only this long
+BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once it is on screen
+BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
 HEADLESS = False
 
 
@@ -231,21 +231,39 @@ class BrowserClient:
             pass
 
     def _fill_boxes(self, box_selector, filled_selector):
-        """Bring each placeholder box (e.g. a vote card) into view and wait for the page's own
-        script to draw `filled_selector` inside it. Returns how many boxes there are; 0 means
-        the page has none. A box that never fills (no votes) just times out, and the boxes
-        after it get a short wait only."""
+        """Bring each placeholder box (e.g. a vote card) into view and wait until the page's own
+        script has filled it with numbers. Returns how many boxes there are; 0 means the page
+        has none.
+
+        The page may attach its scroll handling late, or first draw empty placeholder rows, so
+        "the rows exist" is not enough: a box counts as filled once `filled_selector` inside it
+        contains a digit. Each box is scrolled to again (with a small nudge, which makes the page
+        notice) up to BOX_FILL_ATTEMPTS times. A box that never fills (no votes at all) is
+        given up on, and the boxes after it get a single short try."""
+        try:
+            self.page.wait_for_load_state("load", timeout=15000)   # scripts attached
+        except PatchrightError:
+            pass
         boxes = self.page.locator(box_selector)
         count = boxes.count()
-        wait_ms = BOX_FILL_WAIT_MS
+        attempts = BOX_FILL_ATTEMPTS
         for index in range(count):
             box = boxes.nth(index)
-            try:
-                box.scroll_into_view_if_needed(timeout=5000)
-                box.locator(filled_selector).first.wait_for(state="attached", timeout=wait_ms)
-                self.page.wait_for_timeout(300)   # let the rest of the rows finish
-            except PatchrightError:
-                wait_ms = BOX_RETRY_WAIT_MS
+            for _ in range(attempts):
+                try:
+                    box.scroll_into_view_if_needed(timeout=5000)
+                    self.page.evaluate("() => window.scrollBy(0, 40)")
+                    self.page.evaluate("() => window.scrollBy(0, -40)")
+                    handle = box.element_handle(timeout=2000)
+                    self.page.wait_for_function(
+                        "([el, sel]) => [...el.querySelectorAll(sel)].some(e => /\\d/.test(e.innerText))",
+                        arg=[handle, filled_selector], timeout=BOX_FILL_WAIT_MS)
+                    self.page.wait_for_timeout(300)   # let the rest of the rows finish
+                    break
+                except PatchrightError:
+                    continue
+            else:
+                attempts = 1
         return count
 
     def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
