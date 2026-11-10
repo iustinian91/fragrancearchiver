@@ -26,6 +26,9 @@ MAX_SCROLL_STEPS = 150
 MAX_LAZY_STEPS = 20
 BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once it is on screen
 BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
+BOX_APPEAR_WAIT_MS = 800     # after the last known box, how long to wait for another to be created
+SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
+SLOW_SCROLL_WAIT_MS = 600
 HEADLESS = False
 
 
@@ -230,25 +233,34 @@ class BrowserClient:
         except PatchrightError:
             pass
 
-    def _fill_boxes(self, box_selector, filled_selector):
+    def _fill_boxes(self, box_selector, filled_selector, stop_at=None):
         """Bring each placeholder box (e.g. a vote card) into view and wait until the page's own
         script has filled it with numbers. Returns how many boxes there are; 0 means the page
         has none.
 
-        The page may attach its scroll handling late, or first draw empty placeholder rows, so
+        The page may attach its scroll handling late, draw empty placeholder rows first, or
+        only create the later boxes (the gender card) once the earlier ones are on screen. So
         "the rows exist" is not enough: a box counts as filled once `filled_selector` inside it
-        contains a digit. Each box is scrolled to again (with a small nudge, which makes the page
-        notice) up to BOX_FILL_ATTEMPTS times. A box that never fills (no votes at all) is
-        given up on, and the boxes after it get a single short try."""
+        contains a digit; each box is scrolled to again (with a small nudge, which makes the page
+        notice) up to BOX_FILL_ATTEMPTS times; and the boxes are counted again after the last one
+        in case more were created. If some box is still empty, a slow scroll down to the
+        `stop_at` heading follows (the way a person reads the page). A box that never fills (a
+        perfume nobody has voted on) is given up on, and the boxes after it get one short try."""
         try:
             self.page.wait_for_load_state("load", timeout=15000)   # scripts attached
         except PatchrightError:
             pass
         boxes = self.page.locator(box_selector)
-        count = boxes.count()
-        attempts = BOX_FILL_ATTEMPTS
-        for index in range(count):
+        attempts, index, unfilled = BOX_FILL_ATTEMPTS, 0, 0
+        while True:
+            if index >= boxes.count():
+                # the last known box is done; scroll a little further, in case another one appears
+                self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.6))")
+                self.page.wait_for_timeout(BOX_APPEAR_WAIT_MS)
+                if index >= boxes.count():
+                    break
             box = boxes.nth(index)
+            index += 1
             for _ in range(attempts):
                 try:
                     box.scroll_into_view_if_needed(timeout=5000)
@@ -264,7 +276,25 @@ class BrowserClient:
                     continue
             else:
                 attempts = 1
+                unfilled += 1
+        count = boxes.count()
+        if count and unfilled:
+            self._slow_scroll_until(filled_selector, stop_at)
         return count
+
+    def _slow_scroll_until(self, filled_selector, stop_at):
+        """Scroll from the top a step at a time, until every box holds numbers or `stop_at`
+        comes into view or SLOW_SCROLL_STEPS is used up."""
+        try:
+            self.page.evaluate("() => window.scrollTo(0, 0)")
+            for _ in range(SLOW_SCROLL_STEPS):
+                self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.6))")
+                self.page.wait_for_timeout(SLOW_SCROLL_WAIT_MS)
+                if stop_at and self._reached_heading(stop_at):
+                    self.page.wait_for_timeout(1500)
+                    return
+        except PatchrightError:
+            pass
 
     def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
                    lazy_boxes=None):
@@ -312,7 +342,8 @@ class BrowserClient:
                 boxes = 0
                 if lazy_boxes:
                     try:
-                        boxes = self._fill_boxes(lazy_boxes, wait_for.replace(lazy_boxes, "").strip() or wait_for)
+                        boxes = self._fill_boxes(
+                            lazy_boxes, wait_for.replace(lazy_boxes, "").strip() or wait_for, stop_at)
                     except PatchrightError:
                         boxes = 0
                 if not boxes:

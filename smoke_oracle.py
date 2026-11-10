@@ -106,13 +106,10 @@ NOTE_JS = r"""
 }
 """
 
-# every vote card has drawn its rows (with numbers), or the reviews heading is already in view
-SCROLL_UNTIL_CHARTS_JS = r"""() => {
-  const cards = [...document.querySelectorAll('.tw-perf-card')];
-  if (cards.length && cards.every(c => /\d/.test((c.querySelector('[class*="space-y-2"]') || {}).innerText || ''))) return true;
-  return [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].some(h =>
-    /all reviews/i.test(h.textContent) && h.getBoundingClientRect().top < window.innerHeight);
-}"""
+# the reviews heading is in view: every vote card sits above it, and the page creates the later
+# cards (gender) only as the earlier ones scroll past
+SCROLL_UNTIL_CHARTS_JS = r"""() => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].some(h =>
+    /all reviews/i.test(h.textContent) && h.getBoundingClientRect().top < window.innerHeight)"""
 
 DESIGNER_LINKS_JS = r"""
 () => new Set([...document.querySelectorAll('a[href]')]
