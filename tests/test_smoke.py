@@ -138,3 +138,25 @@ identity = so.compare_identity(
 year = next(c for c in identity if c["field"] == "year")
 assert year["status"] == so.UNAVAILABLE and "unknown" in year["detail"], year
 print("flat note lists and unknown years OK")
+
+# --only-failed picks the pages that failed in an earlier run, in the order they were tested
+import json as _json  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+import smoke_test as st  # noqa: E402
+
+with _tempfile.TemporaryDirectory() as _tmp:
+    _run = _Path(_tmp)
+    (_run / "perfumes_manifest.txt").write_text(
+        "https://www.fragrantica.com/perfume/A/One-1.html\nhttps://www.fragrantica.com/perfume/B/Two-2.html\n"
+        "https://www.fragrantica.com/perfume/C/Three-3.html\n")
+    (_run / "report.json").write_text(_json.dumps({"checks": [
+        {"stage": "perfume pages", "subject": "Three-3.html", "field": "chart: gender", "status": "FAIL", "detail": ""},
+        {"stage": "perfume pages", "subject": "One-1.html", "field": "year", "status": "PASS", "detail": ""},
+        {"stage": "perfume pages", "subject": "Two-2.html", "field": "chart: sillage", "status": "FAIL", "detail": ""},
+        {"stage": "notes", "subject": "One-1.html", "field": "x", "status": "FAIL", "detail": ""},
+    ]}))
+    assert st.failed_urls(_run) == [
+        "https://www.fragrantica.com/perfume/B/Two-2.html", "https://www.fragrantica.com/perfume/C/Three-3.html"]
+print("--only-failed finds the failed pages OK")

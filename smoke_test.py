@@ -1,6 +1,8 @@
 """Small live test of every scraper, run before a full extraction.
 
     python smoke_test.py [--country Thailand] [--designers 3] [--notes 8] [--screenshots]
+    python smoke_test.py --only-failed smoke_run_<earlier time>      # re-test just the pages that failed
+    python smoke_test.py --urls my_urls.txt                          # re-test only these perfume pages
 
 It uses the real browser and the live site, but only a handful of pages, and writes everything
 into its own new folder (default smoke_run_<time>/): separate databases, manifests and images.
@@ -245,13 +247,29 @@ def idempotence(report, stage, main, argv, db, table, workdir, manifest, urls):
                "records {} -> {}".format(before, again))
 
 
+def failed_urls(previous_run):
+    """Perfume page URLs that had a FAIL in an earlier smoke run's report, in the order tested."""
+    previous = Path(previous_run)
+    checks = json.loads((previous / "report.json").read_text(encoding="utf-8"))["checks"]
+    failed = {c["subject"] for c in checks if c["stage"] == "perfume pages" and c["status"] == FAIL and c["subject"]}
+    tested = [ln.strip() for ln in (previous / "perfumes_manifest.txt").read_text(encoding="utf-8").splitlines() if ln.strip()]
+    urls = [u for u in tested if u.rsplit("/", 1)[-1] in failed]
+    missing = failed - {u.rsplit("/", 1)[-1] for u in urls}
+    if missing:
+        print("Could not find these failed pages in {}: {}".format(previous, ", ".join(sorted(missing))))
+    return urls
+
+
 def stage_perfume_scrape(report, args, workdir, crawl_urls):
     import clean
     import export
     import perfumes_scraper as ps
     stage = "perfume pages"
-    sample = curated_urls()
-    sample += [u for u in crawl_urls if u not in sample][:args.from_crawl]
+    if args.only:
+        sample = list(args.only)
+    else:
+        sample = curated_urls()
+        sample += [u for u in crawl_urls if u not in sample][:args.from_crawl]
     manifest = workdir / "perfumes_manifest.txt"
     if manifest.exists():
         manifest.replace(workdir / "perfumes_manifest.crawl.txt")
@@ -419,8 +437,21 @@ def main(argv=None):
                         help="save chart screenshots for the first N perfume pages, for a visual check")
     parser.add_argument("--skip-oracle", action="store_true",
                         help="skip the comparison with the live page (halves the requests; weaker test)")
+    parser.add_argument("--only-failed", metavar="RUN_FOLDER", dest="only_failed",
+                        help="re-test only the perfume pages that failed in an earlier smoke_run folder")
+    parser.add_argument("--urls", metavar="FILE",
+                        help="re-test only the perfume page URLs listed in FILE (one per line)")
     parser.add_argument("--workdir", help="new folder for this run (default smoke_run_<time>)")
     args = parser.parse_args(argv)
+    args.only = None
+    if args.only_failed:
+        args.only = failed_urls(args.only_failed)
+        if not args.only:
+            print("Nothing to re-test: no perfume page failed in {}.".format(args.only_failed))
+            return 0
+    elif args.urls:
+        args.only = [ln.split("#")[0].strip() for ln in Path(args.urls).read_text(encoding="utf-8").splitlines()]
+        args.only = [u if u.startswith("http") else "https://www.fragrantica.com" + u for u in args.only if u]
 
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     workdir = Path(args.workdir or "smoke_run_" + datetime.now().strftime("%Y%m%d_%H%M%S")).resolve()
@@ -435,10 +466,11 @@ def main(argv=None):
     report, outcome = Report(), 0
     try:
         stage_access(report)
-        crawl = stage_perfume_manifest(report, args, workdir)
+        crawl = [] if args.only else stage_perfume_manifest(report, args, workdir)
         stage_perfume_scrape(report, args, workdir, crawl)
-        notes = stage_notes_manifest(report, args, workdir)
-        stage_notes_scrape(report, args, workdir, notes)
+        if not args.only:    # a re-test of chosen perfume pages leaves the notes alone
+            notes = stage_notes_manifest(report, args, workdir)
+            stage_notes_scrape(report, args, workdir, notes)
         stage_pipeline(report)
     except Blocked as exc:
         report.add("blocked", "", "access was refused or a challenge appeared; stopped", BLOCKED, str(exc))
