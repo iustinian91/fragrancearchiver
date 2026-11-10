@@ -27,6 +27,7 @@ MAX_LAZY_STEPS = 20
 BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once it is on screen
 BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
 BOX_APPEAR_WAIT_MS = 700     # after the last known box, how long to wait (per step) for another to be created
+BOX_LAST_LOOK_MS = 2500      # at the end of the page, how long a late box may still take to appear
 BOX_APPEAR_STEPS = 8         # how many such steps down the page before concluding there are no more boxes
 SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
 SLOW_SCROLL_WAIT_MS = 600
@@ -243,7 +244,7 @@ class BrowserClient:
         except PatchrightError:
             pass
 
-    def _fill_boxes(self, box_selector, filled_selector, stop_at=None):
+    def _fill_boxes(self, box_selector, filled_selector, stop_at=None, expect_boxes=0):
         """Bring each placeholder box (e.g. a vote card) into view and wait until the page's own
         script has filled it with numbers. Returns how many boxes there are; 0 means the page
         has none.
@@ -265,14 +266,20 @@ class BrowserClient:
         attempts, index, unfilled, extra_steps, last_look = BOX_FILL_ATTEMPTS, 0, 0, 0, False
         while True:
             if index >= boxes.count():
+                if expect_boxes and index >= expect_boxes:
+                    break      # all the boxes a normal page has are there; no need to wait for more
                 # Every known box is done. The page may create the next one (gender) only after
                 # the reader has gone further down, so keep scrolling towards `stop_at` for a few
                 # steps and look again after each.
                 if extra_steps >= BOX_APPEAR_STEPS or (stop_at and self._reached_heading(stop_at)):
                     if last_look:
                         break
-                    last_look = True          # one more look after a short wait, then stop
-                    self.page.wait_for_timeout(BOX_APPEAR_WAIT_MS)
+                    last_look = True          # one more look, up to a few seconds, then stop
+                    known = boxes.count()
+                    for _ in range(BOX_LAST_LOOK_MS // 250):
+                        self.page.wait_for_timeout(250)
+                        if boxes.count() > known:
+                            break
                     continue
                 extra_steps += 1
                 self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.6))")
@@ -326,13 +333,15 @@ class BrowserClient:
             pass
 
     def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
-                   lazy_boxes=None):
+                   lazy_boxes=None, expect_boxes=0):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
         it appears, or until a heading containing `stop_at` comes into view.
         `scroll_for`: CSS selector of the items in a long lazy-loaded list; scrolls until
         their number stops growing and raises if it never does.
+        `expect_boxes`: how many lazy boxes a complete page has; once that many are filled the
+        wait for further ones is skipped.
         `lazy_boxes`: CSS selector of placeholder boxes the page fills in when they are
         scrolled into view; each is brought into view and given time to fill (`wait_for` is the
         selector that appears inside a filled box). Pages without such boxes fall back to
@@ -372,7 +381,8 @@ class BrowserClient:
                 if lazy_boxes:
                     try:
                         boxes = self._fill_boxes(
-                            lazy_boxes, wait_for.replace(lazy_boxes, "").strip() or wait_for, stop_at)
+                            lazy_boxes, wait_for.replace(lazy_boxes, "").strip() or wait_for, stop_at,
+                            expect_boxes)
                     except PatchrightError:
                         boxes = 0
                 if not boxes:

@@ -187,6 +187,7 @@ SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
 # The page as served already contains empty .tw-perf-card boxes; the vote rows (.space-y-2)
 # only appear once the page's script has drawn them, so wait for those.
 VOTES_BOX = ".tw-perf-card"
+VOTE_CARDS = 3          # longevity, sillage and gender (price value, if shown, comes after)
 VOTES_READY = VOTES_BOX + " .space-y-2"
 VOTES_STOP_AT = "Reviews"  # a heading such as "All Reviews By Date"; the cards are above it
 
@@ -298,7 +299,8 @@ def scrape_perfume(client, url):
 
     url_brand = match.group("brand").replace("-", " ")
     url_title = match.group("title").replace("-", " ")
-    tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT, lazy_boxes=VOTES_BOX)
+    tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT,
+                             lazy_boxes=VOTES_BOX, expect_boxes=VOTE_CARDS)
     check_page(tree, url)
 
     names = page_name_candidates(tree)
