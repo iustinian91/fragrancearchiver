@@ -251,6 +251,13 @@ def idempotence(report, stage, main, argv, db, table, workdir, manifest, urls):
 def failed_urls(previous_run):
     """Perfume page URLs that had a FAIL in an earlier smoke run's report, in the order tested."""
     previous = Path(previous_run)
+    if not (previous / "report.json").is_file() or not (previous / "perfumes_manifest.txt").is_file():
+        runs = sorted(p.name for p in Path(".").glob("smoke_run_*") if (p / "report.json").is_file()
+                      and (p / "perfumes_manifest.txt").is_file())
+        raise SystemExit(
+            "No usable earlier run at '{}' (it needs report.json and perfumes_manifest.txt).\n"
+            "Earlier runs here that can be re-tested: {}".format(previous, ", ".join(runs) or "none")
+        )
     checks = json.loads((previous / "report.json").read_text(encoding="utf-8"))["checks"]
     failed = {c["subject"] for c in checks if c["stage"] == "perfume pages" and c["status"] == FAIL and c["subject"]}
     tested = [ln.strip() for ln in (previous / "perfumes_manifest.txt").read_text(encoding="utf-8").splitlines() if ln.strip()]
