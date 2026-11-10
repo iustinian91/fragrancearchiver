@@ -26,7 +26,8 @@ MAX_SCROLL_STEPS = 150
 MAX_LAZY_STEPS = 20
 BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once it is on screen
 BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
-BOX_APPEAR_WAIT_MS = 800     # after the last known box, how long to wait for another to be created
+BOX_APPEAR_WAIT_MS = 700     # after the last known box, how long to wait (per step) for another to be created
+BOX_APPEAR_STEPS = 8         # how many such steps down the page before concluding there are no more boxes
 SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
 SLOW_SCROLL_WAIT_MS = 600
 HEADLESS = False
@@ -261,16 +262,25 @@ class BrowserClient:
             pass
         self._unlock_scrolling()
         boxes = self.page.locator(box_selector)
-        attempts, index, unfilled = BOX_FILL_ATTEMPTS, 0, 0
+        attempts, index, unfilled, extra_steps, last_look = BOX_FILL_ATTEMPTS, 0, 0, 0, False
         while True:
             if index >= boxes.count():
-                # the last known box is done; scroll a little further, in case another one appears
+                # Every known box is done. The page may create the next one (gender) only after
+                # the reader has gone further down, so keep scrolling towards `stop_at` for a few
+                # steps and look again after each.
+                if extra_steps >= BOX_APPEAR_STEPS or (stop_at and self._reached_heading(stop_at)):
+                    if last_look:
+                        break
+                    last_look = True          # one more look after a short wait, then stop
+                    self.page.wait_for_timeout(BOX_APPEAR_WAIT_MS)
+                    continue
+                extra_steps += 1
                 self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.6))")
                 self.page.wait_for_timeout(BOX_APPEAR_WAIT_MS)
-                if index >= boxes.count():
-                    break
+                continue
             box = boxes.nth(index)
             index += 1
+            last_look = False   # a box was still being created; look again after this one
             for _ in range(attempts):
                 try:
                     box.scroll_into_view_if_needed(timeout=5000)
