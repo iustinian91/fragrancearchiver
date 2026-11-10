@@ -80,6 +80,15 @@ MISSING_IMAGE_STATUSES = (404, 410)
 IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF8", b"RIFF")  # jpeg, png, gif, webp
 
 
+# A popup or ad overlay may lock the page's scrolling (body {overflow: hidden}); undo that so the
+# page can be scrolled to read what is on it. Nothing is clicked or removed.
+UNLOCK_SCROLL_JS = """() => {
+  for (const el of [document.documentElement, document.body]) {
+    if (el && getComputedStyle(el).overflowY === 'hidden') el.style.setProperty('overflow', 'visible', 'important');
+  }
+}"""
+
+
 def image_problem(data):
     """Why `data` cannot be an image file, or None if it looks like one."""
     if not data:
@@ -250,6 +259,7 @@ class BrowserClient:
             self.page.wait_for_load_state("load", timeout=15000)   # scripts attached
         except PatchrightError:
             pass
+        self._unlock_scrolling()
         boxes = self.page.locator(box_selector)
         attempts, index, unfilled = BOX_FILL_ATTEMPTS, 0, 0
         while True:
@@ -282,9 +292,18 @@ class BrowserClient:
             self._slow_scroll_until(filled_selector, stop_at)
         return count
 
+    def _unlock_scrolling(self):
+        """Close a popup with Escape, and undo a scroll lock it left behind (see UNLOCK_SCROLL_JS)."""
+        try:
+            self.page.keyboard.press("Escape")
+            self.page.evaluate(UNLOCK_SCROLL_JS)
+        except PatchrightError:
+            pass
+
     def _slow_scroll_until(self, filled_selector, stop_at):
         """Scroll from the top a step at a time, until every box holds numbers or `stop_at`
         comes into view or SLOW_SCROLL_STEPS is used up."""
+        self._unlock_scrolling()
         try:
             self.page.evaluate("() => window.scrollTo(0, 0)")
             for _ in range(SLOW_SCROLL_STEPS):

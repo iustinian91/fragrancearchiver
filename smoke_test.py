@@ -36,7 +36,7 @@ REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
 import smoke_oracle as so  # noqa: E402
-from browser_client import BASE_URL, BrowserClient  # noqa: E402
+from browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
 BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.IGNORECASE)
@@ -127,6 +127,7 @@ def patient_scroll(page, done_js=None, count_js=None, max_steps=150):
     `count_js` has stopped changing at the bottom of the page. Returns the last count."""
     last, stable = None, 0
     for _ in range(max_steps):
+        page.evaluate(UNLOCK_SCROLL_JS)   # a popup may lock scrolling; the scrapers undo that too
         if done_js and page.evaluate(done_js):
             page.wait_for_timeout(2500)
             return None
