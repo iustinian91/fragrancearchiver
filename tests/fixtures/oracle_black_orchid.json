@@ -1,194 +1,204 @@
 {
- "title": "Black Orchid Tom Ford for women",
- "brand": "Tom Ford",
- "year": "2006",
- "accords": [
-  "warm spicy",
-  "earthy",
-  "woody",
-  "sweet",
-  "amber",
-  "patchouli",
-  "floral",
-  "chocolate",
-  "powdery",
-  "balsamic"
- ],
- "notes": {
-  "top": [
-   "Truffle",
-   "Gardenia",
-   "Black Currant",
-   "Ylang-Ylang",
-   "Jasmine",
-   "Bergamot",
-   "Mandarin Orange",
-   "Amalfi Lemon"
+  "title": "Black Orchid Tom Ford for women",
+  "brand": "Tom Ford",
+  "year": "2006",
+  "accords": [
+    "warm spicy",
+    "earthy",
+    "woody",
+    "sweet",
+    "amber",
+    "patchouli",
+    "floral",
+    "chocolate",
+    "powdery",
+    "balsamic"
   ],
-  "middle": [
-   "Orchid",
-   "Spices",
-   "Gardenia",
-   "Fruity Notes",
-   "Ylang-Ylang",
-   "Jasmine",
-   "Lotus"
-  ],
-  "base": [
-   "Mexican chocolate",
-   "Patchouli",
-   "Vanille",
-   "Incense",
-   "Amber",
-   "Sandalwood",
-   "Vetiver",
-   "White Musk"
+  "notes": {
+    "top": [
+      "Truffle",
+      "Gardenia",
+      "Black Currant",
+      "Ylang-Ylang",
+      "Jasmine",
+      "Bergamot",
+      "Mandarin Orange",
+      "Amalfi Lemon"
+    ],
+    "middle": [
+      "Orchid",
+      "Spices",
+      "Gardenia",
+      "Fruity Notes",
+      "Ylang-Ylang",
+      "Jasmine",
+      "Lotus"
+    ],
+    "base": [
+      "Mexican chocolate",
+      "Patchouli",
+      "Vanille",
+      "Incense",
+      "Amber",
+      "Sandalwood",
+      "Vetiver",
+      "White Musk"
+    ]
+  },
+  "charts": {
+    "longevity": [
+      {
+        "label": "very weak",
+        "count": "216",
+        "width": 1
+      },
+      {
+        "label": "weak",
+        "count": "403",
+        "width": 3
+      },
+      {
+        "label": "moderate",
+        "count": "2.6k",
+        "width": 18
+      },
+      {
+        "label": "long lasting",
+        "count": "6k",
+        "width": 41
+      },
+      {
+        "label": "eternal",
+        "count": "5.3k",
+        "width": 37
+      }
+    ],
+    "sillage": [
+      {
+        "label": "intimate",
+        "count": "620",
+        "width": 4
+      },
+      {
+        "label": "moderate",
+        "count": "3.6k",
+        "width": 24
+      },
+      {
+        "label": "strong",
+        "count": "6.6k",
+        "width": 45
+      },
+      {
+        "label": "enormous",
+        "count": "4k",
+        "width": 27
+      }
+    ],
+    "gender": [
+      {
+        "label": "female",
+        "count": "1.5k",
+        "width": 14
+      },
+      {
+        "label": "more female",
+        "count": "2k",
+        "width": 18
+      },
+      {
+        "label": "unisex",
+        "count": "6.3k",
+        "width": 56
+      },
+      {
+        "label": "more male",
+        "count": "823",
+        "width": 7
+      },
+      {
+        "label": "male",
+        "count": "596",
+        "width": 5
+      }
+    ],
+    "price value": [
+      {
+        "label": "way overpriced",
+        "count": "1.1k",
+        "width": 12
+      },
+      {
+        "label": "overpriced",
+        "count": "2.7k",
+        "width": 29
+      },
+      {
+        "label": "ok",
+        "count": "4.3k",
+        "width": 46
+      },
+      {
+        "label": "good value",
+        "count": "943",
+        "width": 10
+      },
+      {
+        "label": "great value",
+        "count": "255",
+        "width": 3
+      }
+    ],
+    "when to wear": [
+      {
+        "label": "winter",
+        "count": "12.8k",
+        "width": 98.410739
+      },
+      {
+        "label": "spring",
+        "count": "3.2k",
+        "width": 24.394384
+      },
+      {
+        "label": "summer",
+        "count": "1.8k",
+        "width": 13.894461
+      },
+      {
+        "label": "fall",
+        "count": "10.6k",
+        "width": 82.116957
+      },
+      {
+        "label": "day",
+        "count": "3.7k",
+        "width": 28.915291
+      },
+      {
+        "label": "night",
+        "count": "13k",
+        "width": 100
+      }
+    ]
+  },
+  "images": {
+    "og": [
+      "https://fimgs.net/mdimg/perfume-social-cards/en-social-1018.jpeg",
+      "https://fimgs.net/mdimg/perfume-social-cards/en-p_c_1018.jpeg",
+      "https://fimgs.net/mdimg/perfume/social.1018.jpg",
+      "https://fimgs.net/mdimg/perfume/o.1018.jpg"
+    ],
+    "photo": "https://fimgs.net/mdimg/perfume/o.1018.jpg"
+  },
+  "perfumers": [
+    {
+      "slug": "David_Apel",
+      "name": "David Apel"
+    },
+    {
+      "slug": "Pierre_Negrin",
+      "name": "Pierre Negrin"
+    }
   ]
- },
- "charts": {
-  "longevity": [
-   {
-    "label": "very weak",
-    "count": "216",
-    "width": 1
-   },
-   {
-    "label": "weak",
-    "count": "403",
-    "width": 3
-   },
-   {
-    "label": "moderate",
-    "count": "2.6k",
-    "width": 18
-   },
-   {
-    "label": "long lasting",
-    "count": "6k",
-    "width": 41
-   },
-   {
-    "label": "eternal",
-    "count": "5.3k",
-    "width": 37
-   }
-  ],
-  "sillage": [
-   {
-    "label": "intimate",
-    "count": "620",
-    "width": 4
-   },
-   {
-    "label": "moderate",
-    "count": "3.6k",
-    "width": 24
-   },
-   {
-    "label": "strong",
-    "count": "6.6k",
-    "width": 45
-   },
-   {
-    "label": "enormous",
-    "count": "4k",
-    "width": 27
-   }
-  ],
-  "gender": [
-   {
-    "label": "female",
-    "count": "1.5k",
-    "width": 14
-   },
-   {
-    "label": "more female",
-    "count": "2k",
-    "width": 18
-   },
-   {
-    "label": "unisex",
-    "count": "6.3k",
-    "width": 56
-   },
-   {
-    "label": "more male",
-    "count": "823",
-    "width": 7
-   },
-   {
-    "label": "male",
-    "count": "596",
-    "width": 5
-   }
-  ],
-  "price value": [
-   {
-    "label": "way overpriced",
-    "count": "1.1k",
-    "width": 12
-   },
-   {
-    "label": "overpriced",
-    "count": "2.7k",
-    "width": 29
-   },
-   {
-    "label": "ok",
-    "count": "4.3k",
-    "width": 46
-   },
-   {
-    "label": "good value",
-    "count": "943",
-    "width": 10
-   },
-   {
-    "label": "great value",
-    "count": "255",
-    "width": 3
-   }
-  ],
-  "when to wear": [
-   {
-    "label": "winter",
-    "count": "12.8k",
-    "width": 98.410739
-   },
-   {
-    "label": "spring",
-    "count": "3.2k",
-    "width": 24.394384
-   },
-   {
-    "label": "summer",
-    "count": "1.8k",
-    "width": 13.894461
-   },
-   {
-    "label": "fall",
-    "count": "10.6k",
-    "width": 82.116957
-   },
-   {
-    "label": "day",
-    "count": "3.7k",
-    "width": 28.915291
-   },
-   {
-    "label": "night",
-    "count": "13k",
-    "width": 100
-   }
-  ]
- },
- "images": {
-  "og": [
-   "https://fimgs.net/mdimg/perfume-social-cards/en-social-1018.jpeg",
-   "https://fimgs.net/mdimg/perfume-social-cards/en-p_c_1018.jpeg",
-   "https://fimgs.net/mdimg/perfume/social.1018.jpg",
-   "https://fimgs.net/mdimg/perfume/o.1018.jpg"
-  ],
-  "photo": "https://fimgs.net/mdimg/perfume/o.1018.jpg"
- }
 }

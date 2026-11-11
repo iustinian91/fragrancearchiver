@@ -16,11 +16,11 @@ from pathlib import Path
 
 PAGE_ID = re.compile(r"-(\d+)\.html?$")
 IMAGE_ID = re.compile(r"^o\.(\d+)\.")
-FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear")
+FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers")
 
 
 COLUMNS = ("brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-           "gender", "when_to_wear")
+           "gender", "when_to_wear", "perfumers")
 
 
 def load(db):

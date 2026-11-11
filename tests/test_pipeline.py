@@ -36,6 +36,8 @@ assert ps.page_charts(bad)["gender"] is None
 print("charts extracted OK")
 
 import clean as _clean  # noqa: E402
+assert _clean._parse_perfumers('[{"name": "David  Apel", "slug": "David_Apel"}, {"slug": "x"}]') == [{"name": "David Apel", "slug": "David_Apel"}]
+assert _clean._parse_perfumers("null") == [] and _clean._parse_perfumers(None) == []
 assert _clean._parse_notes('{"general": ["Milk", "Caramel"]}') == {"top": [], "middle": [], "base": [], "general": ["Milk", "Caramel"]}
 assert _clean._parse_notes({"top": ["A"], "base": ["B"]})["general"] == []
 print("flat note lists keep their own general group OK")
@@ -43,8 +45,8 @@ print("flat note lists keep their own general group OK")
 record = ("Tom Ford", json.dumps({"title": "Black Orchid", "image": "o.1018.jpg", "title_source": "page", "brand_source": "page"}),
           "2006", json.dumps(["warm spicy"]), json.dumps({"top": ["Truffle"], "middle": ["Orchid"], "base": ["Patchouli"]}),
           json.dumps(charts["longevity"]), json.dumps(charts["sillage"]), json.dumps(charts["gender"]),
-          json.dumps(charts["when_to_wear"]))
-empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null")
+          json.dumps(charts["when_to_wear"]), json.dumps([{"name": "David Apel", "slug": "David_Apel"}]))
+empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null", "[]")
 
 with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)

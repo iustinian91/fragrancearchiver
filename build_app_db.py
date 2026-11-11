@@ -50,6 +50,15 @@ def main():
       FOREIGN KEY (perfume_id) REFERENCES perfumes(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE perfumers(
+      perfume_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      rank INTEGER,                -- order on the page
+      PRIMARY KEY (perfume_id, slug),
+      FOREIGN KEY (perfume_id) REFERENCES perfumes(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE accords(
       perfume_id TEXT NOT NULL,
       accord TEXT NOT NULL,
@@ -83,13 +92,14 @@ def main():
     CREATE INDEX idx_perfumes_year  ON perfumes(year);
     CREATE INDEX idx_notes_note     ON notes(note);
     CREATE INDEX idx_accords_accord ON accords(accord);
+    CREATE INDEX idx_perfumers_name ON perfumers(name);
     CREATE INDEX idx_votes_chart    ON perfume_votes(chart, option);
     """)
 
     with open(DATA, encoding="utf-8") as f:
         data = json.load(f)
 
-    perf_rows, note_rows, acc_rows, fts_rows, vote_rows = [], [], [], [], []
+    perf_rows, note_rows, acc_rows, fts_rows, vote_rows, perfumer_rows = [], [], [], [], [], []
     for rowid, p in enumerate(data, start=1):
         image = p.get("image")
         # Explicit rowid: perfume_fts is contentless, so search hits join back via perfume_fts.rowid = perfumes.rowid
@@ -106,6 +116,9 @@ def main():
         for chart, data_ in p.get("charts", {}).items():
             for position, (option, votes) in enumerate(data_["votes"].items(), start=1):
                 vote_rows.append((p["id"], chart, option, position, votes, data_["share"][option]))
+
+        for idx, person in enumerate(p.get("perfumers", []), start=1):
+            perfumer_rows.append((p["id"], person["name"], person["slug"], idx))
 
         # main_accords (ordered)
         for idx, a in enumerate(p.get("main_accords", []), start=1):
@@ -128,6 +141,10 @@ def main():
         cur.executemany(
             "INSERT INTO perfume_votes(perfume_id,chart,option,position,votes,share) VALUES (?,?,?,?,?,?)",
             vote_rows
+        )
+        cur.executemany(
+            "INSERT OR IGNORE INTO perfumers(perfume_id,name,slug,rank) VALUES (?,?,?,?)",
+            perfumer_rows
         )
         cur.executemany(
             "INSERT INTO accords(perfume_id,accord,rank) VALUES (?,?,?)",

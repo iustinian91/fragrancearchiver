@@ -319,6 +319,19 @@ def card_summary(tree):
     return "; ".join(parts) or "no vote cards"
 
 
+def page_perfumers(tree):
+    """The perfumers (noses) credited on the page: [{"name": "David Apel", "slug": "David_Apel"}].
+    Empty when the page names none. Their links are in the "Perfumers" section."""
+    people, seen = [], set()
+    for link in tree.xpath("//a[starts-with(@href, '/noses/')][substring(@href, string-length(@href) - 4) = '.html']"):
+        name = " ".join(link.text_content().split())
+        slug = link.get("href").rsplit("/", 1)[-1][:-len(".html")]
+        if name and slug not in seen:
+            seen.add(slug)
+            people.append({"name": name, "slug": slug})
+    return people
+
+
 def vote_card_problems(tree):
     """What is missing from the longevity, sillage and gender cards: "gender card missing",
     "sillage card has no numbers". Empty if all three are there and filled."""
@@ -390,6 +403,7 @@ def scrape_perfume(client, url):
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),
         json.dumps(notes), json.dumps(charts["longevity"]), json.dumps(charts["sillage"]),
         json.dumps(charts["gender"]), json.dumps(charts["when_to_wear"]),
+        json.dumps(page_perfumers(tree)),
     )
     return perfume, record
 
@@ -436,7 +450,7 @@ def main(argv=None):
     # How many scraped rows actually have each field, so an extraction that stops working
     # (e.g. after a site redesign) shows up after a short test run instead of a long crawl.
     filled = dict.fromkeys(
-        ("year", "accords", "notes", "longevity", "sillage", "gender", "when_to_wear"), 0
+        ("year", "accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers"), 0
     )
     scraped = 0
     incomplete = []
@@ -463,9 +477,10 @@ def main(argv=None):
                 from_page["brand"] += perfume["brand_source"] == "page"
                 filled["year"] += record[2] is not None
                 for field, value in zip(
-                        ("accords", "notes", "longevity", "sillage", "gender", "when_to_wear"), record[3:]
+                        ("accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers"),
+                        record[3:],
                 ):
-                    filled[field] += value != "null"
+                    filled[field] += value not in ("null", "[]")
                 print({
                     "progress": "{}/{}".format(position, len(pending)),
                     "completed_total": len(completed),

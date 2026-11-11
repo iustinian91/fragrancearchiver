@@ -123,7 +123,7 @@ class PerfumesDBHelper(_TableDB):
     table = "perfumes"
     columns = (
         "brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-        "gender", "when_to_wear",
+        "gender", "when_to_wear", "perfumers",
     )
 
     def migrate_legacy_progress(self, manifest_urls):

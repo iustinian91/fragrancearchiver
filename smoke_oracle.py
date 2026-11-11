@@ -42,6 +42,11 @@ PERFUME_JS = r"""
   const endYear = clean(document.title).match(/(?:^|\D)((?:1[5-9]|20)\d\d)\s*$/);
   out.year = launched ? launched[1] : (endYear ? endYear[1] : null);
 
+  // perfumers: the people linked from the page's Perfumers section
+  out.perfumers = [...new Set([...document.querySelectorAll('a[href^="/noses/"][href$=".html"]')]
+    .map(a => a.getAttribute('href').split('/').pop().replace(/\.html$/, '') + '|' + text(a)))]
+    .map(s => ({slug: s.split('|')[0], name: s.split('|').slice(1).join('|')})).filter(p => p.name);
+
   // main accords: the labels under the "main accords" heading, in the order shown
   const accHead = [...document.querySelectorAll('h6')].find(h => /^main accords$/i.test(text(h)));
   if (accHead && accHead.nextElementSibling) {
@@ -182,6 +187,17 @@ def compare_accords(stored, shown):
                    "stored {}; page {}".format(stored, shown["accords"]))]
 
 
+def compare_perfumers(stored, shown):
+    """Perfumers stored for the page against the people linked from its Perfumers section."""
+    want = sorted(p["slug"] for p in shown.get("perfumers", []))
+    got = sorted(p.get("slug", "") for p in (stored or []))
+    if not want and not got:
+        return [_check("perfumers", UNAVAILABLE, "no perfumer named on the page")]
+    if want == got:
+        return [_check("perfumers", PASS, ", ".join(p["name"] for p in shown["perfumers"]))]
+    return [_check("perfumers", FAIL, "page names {}; stored {}".format(want, got))]
+
+
 def compare_notes(stored, shown):
     """Top, middle and base notes must be in the groups the page puts them in."""
     shown_notes = shown["notes"]
@@ -272,6 +288,7 @@ def compare_perfume(record, shown, cleaned_charts, file_problem, url_id):
          "title_source": info.get("title_source"), "brand_source": info.get("brand_source")}, shown)
     checks += compare_accords(record["main_accords"], shown)
     checks += compare_notes(record["notes"], shown)
+    checks += compare_perfumers(record.get("perfumers"), shown)
     for name in SITE_LABELS:
         rows = shown["charts"].get(name.replace("_", " "), [])
         checks += compare_chart(name, record[name], rows)

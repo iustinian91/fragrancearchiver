@@ -84,3 +84,14 @@ print("card_summary describes empty and missing cards OK")
 
 # which vote cards are missing or empty
 assert ps.vote_card_problems(empty_cards) == ["longevity card missing", "sillage card missing", "gender card has no numbers"]
+
+# perfumers named on the page
+named = html.fromstring(
+    "<html><body><a href='/noses/'>Perfumers</a><h3>Perfumers</h3>"
+    "<a href='/noses/David_Apel.html'><img src='x'><span>David Apel</span></a>"
+    "<a href='/noses/Pierre_Negrin.html'>Pierre Negrin</a>"
+    "<a href='/noses/David_Apel.html'>David Apel</a></body></html>")
+assert ps.page_perfumers(named) == [
+    {"name": "David Apel", "slug": "David_Apel"}, {"name": "Pierre Negrin", "slug": "Pierre_Negrin"}]
+assert ps.page_perfumers(html.fromstring("<html><body><a href='/noses/'>Perfumers</a></body></html>")) == []
+print("perfumers read from the page OK")

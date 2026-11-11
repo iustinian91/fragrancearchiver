@@ -186,6 +186,22 @@ def _parse_main_accords(raw):
     return _clean_list(raw) if isinstance(raw, list) else []
 
 
+def _parse_perfumers(raw):
+    """[{"name", "slug"}, ...] from a list or its JSON text; anything else gives []."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    people = []
+    for item in raw:
+        if isinstance(item, dict) and str(item.get("name") or "").strip():
+            people.append({"name": " ".join(str(item["name"]).split()), "slug": str(item.get("slug") or "")})
+    return people
+
+
 def _best_name(p):
     info = _perfume_info(p)
     title = info.get("title")
@@ -273,6 +289,7 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
             "year": year,
             "image": _best_image(p),
             "main_accords": main_accords,
+            "perfumers": _parse_perfumers(p.get("perfumers")),   # [{name, slug}]
             "notes": notes,                 # {top, middle, base, general}
             "charts": charts,               # {chart: {"votes": {...}, "share": {...}}}
             "popularity": popularity,

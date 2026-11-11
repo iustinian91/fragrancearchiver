@@ -33,6 +33,7 @@ record = {
     "perfume": {"title": "Black Orchid", "image": "o.1018.jpg", "title_source": "page", "brand_source": "page"},
     "main_accords": shown["accords"],
     "notes": {k: shown["notes"][k] for k in ("top", "middle", "base")},
+    "perfumers": shown["perfumers"],
     **charts,
 }
 identity = {k: k for k in clean.GENDER_KEYS + clean.WHEN_KEYS}
@@ -160,3 +161,18 @@ with _tempfile.TemporaryDirectory() as _tmp:
     assert st.failed_urls(_run) == [
         "https://www.fragrantica.com/perfume/B/Two-2.html", "https://www.fragrantica.com/perfume/C/Three-3.html"]
 print("--only-failed finds the failed pages OK")
+
+# perfumers: stored against the people the page links
+assert so.compare_perfumers([{"slug": "A_B", "name": "A B"}], {"perfumers": [{"slug": "A_B", "name": "A B"}]})[0]["status"] == so.PASS
+assert so.compare_perfumers([], {"perfumers": [{"slug": "A_B", "name": "A B"}]})[0]["status"] == so.FAIL
+assert so.compare_perfumers([], {"perfumers": []})[0]["status"] == so.UNAVAILABLE
+print("perfumer comparison OK")
+
+# --random picks a repeatable sample of the manifest
+with _tempfile.TemporaryDirectory() as _tmp:
+    _manifest = _Path(_tmp) / "m.txt"
+    _manifest.write_text("\n".join("https://www.fragrantica.com/perfume/B/P{0}-{0}.html".format(i) for i in range(1, 101)) + "\n")
+    _a = st.random_urls(5, 42, _manifest)
+    assert _a == st.random_urls(5, 42, _manifest) and len(set(_a)) == 5 and _a != st.random_urls(5, 43, _manifest)
+    assert len(st.random_urls(500, 1, _manifest)) == 100
+print("--random samples are repeatable OK")

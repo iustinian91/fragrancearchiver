@@ -3,6 +3,7 @@
     python smoke_test.py [--country Thailand] [--designers 3] [--notes 8] [--screenshots]
     python smoke_test.py --only-failed smoke_run_<earlier time>      # re-test just the pages that failed
     python smoke_test.py --urls my_urls.txt                          # re-test only these perfume pages
+    python smoke_test.py --random 10 [--seed 123]                    # 10 pages picked at random from your manifest
 
 It uses the real browser and the live site, but only a handful of pages, and writes everything
 into its own new folder (default smoke_run_<time>/): separate databases, manifests and images.
@@ -268,6 +269,17 @@ def failed_urls(previous_run):
     return urls
 
 
+def random_urls(count, seed, manifest="perfumes_manifest.txt"):
+    """`count` perfume page URLs picked at random from the real manifest (read only). The same
+    seed gives the same pages, so a failing sample can be repeated."""
+    import random
+    path = Path(manifest)
+    if not path.is_file():
+        raise SystemExit("--random needs {} (run perfumes_extract_manifest.py first).".format(manifest))
+    urls = list(dict.fromkeys(ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()))
+    return random.Random(seed).sample(urls, min(count, len(urls)))
+
+
 def stage_perfume_scrape(report, args, workdir, crawl_urls):
     import clean
     import export
@@ -288,13 +300,13 @@ def stage_perfume_scrape(report, args, workdir, crawl_urls):
     report.add(stage, "", "scraper finished", PASS if code == 0 else FAIL, "exit code {}".format(code))
     if code:
         return
-    columns = "brand, perfume, launch_year, main_accords, notes, longevity, sillage, gender, when_to_wear"
+    columns = "brand, perfume, launch_year, main_accords, notes, longevity, sillage, gender, when_to_wear, perfumers"
     raw, progress = table_rows("perfumes.sqlite", "perfumes", columns)
     names = columns.split(", ")
     records = []
     for row in raw:
         rec = dict(zip(names, row))
-        for key in ("perfume", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear"):
+        for key in ("perfume", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers"):
             rec[key] = json.loads(rec[key]) if rec[key] is not None else None
         records.append(rec)
     by_id = {}
@@ -448,6 +460,10 @@ def main(argv=None):
                         help="skip the comparison with the live page (halves the requests; weaker test)")
     parser.add_argument("--only-failed", metavar="RUN_FOLDER", dest="only_failed",
                         help="re-test only the perfume pages that failed in an earlier smoke_run folder")
+    parser.add_argument("--random", type=int, metavar="N",
+                        help="test N perfume pages picked at random from perfumes_manifest.txt, "
+                             "instead of the curated list; for use once the curated pages pass")
+    parser.add_argument("--seed", type=int, help="seed for --random (printed, so a sample can be repeated)")
     parser.add_argument("--urls", metavar="FILE",
                         help="re-test only the perfume page URLs listed in FILE (one per line)")
     parser.add_argument("--workdir", help="new folder for this run (default smoke_run_<time>)")
@@ -458,6 +474,13 @@ def main(argv=None):
         if not args.only:
             print("Nothing to re-test: no perfume page failed in {}.".format(args.only_failed))
             return 0
+    elif args.random:
+        import random
+        seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10 ** 6)
+        args.only = random_urls(args.random, seed)
+        print("Random sample of {} pages (seed {}; repeat it with --seed {}):".format(len(args.only), seed, seed))
+        for url in args.only:
+            print("  " + url)
     elif args.urls:
         args.only = [ln.split("#")[0].strip() for ln in Path(args.urls).read_text(encoding="utf-8").splitlines()]
         args.only = [u if u.startswith("http") else "https://www.fragrantica.com" + u for u in args.only if u]

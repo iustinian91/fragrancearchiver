@@ -154,7 +154,7 @@ matching, scrolling, checkpoints and empty-page handling without a browser.
 
 Besides longevity and sillage, each perfume page's **gender** chart (female, more female,
 unisex, more male, male) and **when to wear** chart (winter, spring, summer, fall, day,
-night) are stored as vote counts in the `gender` and `when_to_wear` columns. Top, middle and
+night) are stored as vote counts in the `gender` and `when_to_wear` columns. The perfumers named on the page are stored in `perfumers` (name and `/noses/` slug; `perfumers` in `app.db`). Top, middle and
 base notes are stored in `notes`; a page that shows one flat list of notes (no pyramid) is
 stored under `general` and kept in its own `general` group in `perfumes_clean.json` and `app.db`.
 A perfume whose page gives no launch year has no year (`null`; shown as unknown). `clean.py` normalizes every chart into
@@ -203,6 +203,7 @@ The run stops at the first HTTP 429/403, challenge page or list that never finis
 and reports it as BLOCKED; it does not try to get around it. Pages that fail a check are saved
 under `failures/` so selectors can be fixed from the real HTML. Exit status: 0 all passed,
 1 a check failed, 2 blocked. `python tests/test_smoke.py` tests the comparison logic offline.
+Once the curated pages pass, `python smoke_test.py --random 10` tests 10 pages picked at random from `perfumes_manifest.txt` (it prints the seed; `--seed N` repeats the same sample). A random page that fails is a new case: add it to `smoke_urls.txt`.
 After a failed run, `python smoke_test.py --only-failed smoke_run_<time>` re-tests just the perfume pages that failed there (12 pages instead of the whole sample, and no manifest or notes crawl); `--urls FILE` does the same for a list of your own.
 `python tests/test_robustness.py` checks that image downloads are atomic and validated (a 404 image is skipped, not fatal), that blank pages are refused before a URL is marked complete, and that a failed `app.db` build keeps the previous file.
 
