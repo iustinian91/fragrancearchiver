@@ -135,3 +135,63 @@ with tempfile.TemporaryDirectory() as tmp:
     c = Fake({country: page([d("A")]), B + d("A"): page([p("A", 1)])})
     assert run(c) == 1 and c.seen == [country]           # saved designer vanished -> stop, don't guess
     print("inconsistent checkpoints refused OK")
+
+
+# ---- a country page with no designers, designers with fewer perfumes than before, the summary ----
+import contextlib  # noqa: E402
+import io  # noqa: E402
+
+
+class Queue(Fake):
+    """Fake whose page list per URL is a queue: each fetch takes the next page (the last repeats)."""
+    def fetch_tree(s, url, wait_for=None, scroll_for=None):
+        s.seen.append(url)
+        pages = s.pages[url]
+        return pages.pop(0) if len(pages) > 1 else pages[0]
+
+
+def run_quiet(client):
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        code = run(client)
+    return code, out.getvalue()
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    c = Queue({country: [page([])]})                      # never lists a designer
+    code, out = run_quiet(c)
+    assert code == 1 and c.seen == [country, country], (code, c.seen)
+    assert "listed no designers" in out and "TestLand" in out
+    assert not Path("perfumes_manifest.txt").exists(), "a country must not be skipped silently"
+    assert not Path("perfumes_manifest.state.json").exists(), "the checkpoint must not move past the country"
+    c = Queue({country: [page([]), page([d("A")])], B + d("A"): [page([p("A", 1)])]})
+    assert run_quiet(c)[0] == 0 and c.seen.count(country) == 2   # one more try is enough
+    print("a country page without designers is retried, then stops the crawl OK")
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    Path("perfumes_manifest.txt").write_text("".join(B + p("A", i) + "\n" for i in range(10)))
+    full, short = [page([p("A", i) for i in range(10)])], [page([p("A", 1), p("A", 2)])]
+    c = Queue({country: [page([d("A")])], B + d("A"): short + full})         # first load is partial
+    code, out = run_quiet(c)
+    assert code == 0 and c.seen.count(B + d("A")) == 2 and not Path("perfumes_manifest.short.txt").exists()
+    assert len(Path("perfumes_manifest.txt").read_text().split()) == 10, "the longer list wins"
+    assert "[Short]" in out and "TestLand" in out and "Summary of this run" in out
+    print("a partly loaded designer is fetched again and the longer list kept OK")
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    Path("perfumes_manifest.txt").write_text("".join(B + p("A", i) + "\n" for i in range(10)))
+    c = Queue({country: [page([d("A"), d("B")])], B + d("A"): [page([p("A", 1), p("A", 2)])],
+               B + d("B"): [page([p("B", 3)])]})
+    code, out = run_quiet(c)
+    assert code == 0 and c.seen.count(B + d("A")) == 2
+    assert c.seen.count(B + d("B")) == 1, "a designer with no previous count is fetched once"
+    assert Path("perfumes_manifest.short.txt").read_text().split("\t") == [B + d("A"), "2", "10\n"]
+    assert "Review the short designers" in out
+    print("a designer that stays short is recorded and the crawl goes on OK")
+
+# the rule itself: small drops and small designers are not flagged
+assert not em.is_short(9, 10) and not em.is_short(1, 3) and em.is_short(2, 10) and not em.is_short(8, 10)
+print("short-list rule OK")

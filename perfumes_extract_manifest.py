@@ -4,8 +4,9 @@ import argparse
 import json
 import os
 import re
+from collections import Counter
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import browser_client
 from browser_client import (
@@ -20,6 +21,9 @@ OUTPUT_PATH = Path("perfumes_manifest.txt")
 TEMP_OUTPUT_PATH = Path("perfumes_manifest.txt.tmp")
 STATE_PATH = Path("perfumes_manifest.state.json")
 EMPTY_PATH = Path("perfumes_manifest.empty.txt")  # designer pages that stayed empty after a retry
+SHORT_PATH = Path("perfumes_manifest.short.txt")  # designers with fewer perfumes than last time: url, now, before
+SHORT_SHARE = 0.9     # a designer with under 90% of the perfumes it had in the previous manifest ...
+SHORT_MIN_GAP = 3     # ... and at least 3 fewer, is fetched once more, and recorded if still short
 LEGACY_TEMP_PATH = Path("manifest.txt.tmp")
 LEGACY_OUTPUT_PATH = Path("manifest.txt")
 
@@ -104,16 +108,59 @@ def start_position(brand_urls, resume, country):
     return brand_urls.index(resume)
 
 
-def fetch_designer_perfumes(client, brand_url):
-    """Perfume URLs on a designer page. An empty page is fetched once more before it is
-    accepted as empty, since a page that did not finish loading looks the same."""
+def brand_segment(perfume_url):
+    """The designer part of a perfume URL: /perfume/<Brand>/<Name>-<id>.html -> <Brand>."""
+    parts = urlsplit(perfume_url).path.split("/")
+    return parts[2] if len(parts) > 3 and parts[1] == "perfume" else ""
+
+
+def previous_counts(path=OUTPUT_PATH):
+    """How many perfumes each designer had in the previous manifest (empty if there is none)."""
+    if not path.exists():
+        return Counter()
+    with path.open(encoding="utf-8") as manifest:
+        return Counter(brand_segment(line.strip()) for line in manifest if line.strip())
+
+
+def expected_count(brand_url, found, counts):
+    """Perfumes this designer had last time: by the designer page's name, else by the brand most
+    of the perfumes found carry in their URLs (the two can differ)."""
+    by_name = counts[Path(urlsplit(brand_url).path).stem]
+    if by_name or not found:
+        return by_name
+    return counts[Counter(brand_segment(u) for u in found).most_common(1)[0][0]]
+
+
+def is_short(found, expected):
+    return expected - found >= SHORT_MIN_GAP and found < expected * SHORT_SHARE
+
+
+def fetch_designer_perfumes(client, brand_url, counts=None):
+    """(perfume URLs on a designer page, "ok" | "short" | "empty").
+
+    A page with no perfumes, or with clearly fewer than the previous manifest had, is fetched once
+    more, since a page that did not finish loading looks the same; the longer list wins. What is
+    still empty or short after that is recorded and the crawl goes on."""
+    counts = counts if counts is not None else Counter()
+    best, expected = [], 0
     for attempt in (1, 2):
         tree = client.fetch_tree(brand_url, scroll_for=PERFUME_LINKS)
         urls = matching_urls(tree, brand_url, PERFUME_PATH)
-        if urls:
-            return urls
+        if len(urls) > len(best):
+            best = urls
+        expected = expected_count(brand_url, best, counts)
+        if best and not is_short(len(best), expected):
+            return best, "ok"
         if attempt == 1:
-            print("[Empty] {} had no perfumes; trying once more".format(brand_url), flush=True)
+            print("[{}] {} had {} perfumes{}; trying once more".format(
+                "Short" if best else "Empty", brand_url, len(best),
+                " ({} last time)".format(expected) if best else ""), flush=True)
+    if best:
+        print("[Short] {} still has {} perfumes, {} last time; recorded in {}".format(
+            brand_url, len(best), expected, SHORT_PATH), flush=True)
+        with SHORT_PATH.open("a", encoding="utf-8") as short:
+            short.write("{}\t{}\t{}\n".format(brand_url, len(best), expected))
+        return best, "short"
     try:
         title = client.page.title().strip()
     except FETCH_ERRORS:
@@ -122,7 +169,21 @@ def fetch_designer_perfumes(client, brand_url):
         brand_url, title, EMPTY_PATH), flush=True)
     with EMPTY_PATH.open("a", encoding="utf-8") as empty:
         empty.write(brand_url + "\n")
-    return []
+    return [], "empty"
+
+
+def print_summary(stats):
+    """One line per country crawled in this run, then where the empty and short lists are."""
+    if not stats:
+        return
+    print("\nSummary of this run:")
+    print("{:<22}{:>10}{:>10}{:>8}{:>8}{:>8}".format("country", "designers", "perfumes", "new", "empty", "short"))
+    for country, c in stats.items():
+        print("{:<22}{:>10}{:>10}{:>8}{:>8}{:>8}".format(
+            country, c["designers"], c["found"], c["new"], c["empty"], c["short"]))
+    for label, path in (("empty", EMPTY_PATH), ("short", SHORT_PATH)):
+        if path.exists() and path.read_text(encoding="utf-8").strip():
+            print("Review the {} designers listed in {}.".format(label, path))
 
 
 def main(argv=None):
@@ -146,6 +207,9 @@ def main(argv=None):
         print("Could not read crawl checkpoint: {}".format(exc))
         return 1
 
+    counts = previous_counts()
+    stats = {}      # country -> Counter, for the summary at the end
+
     print(
         "Starting at country {}/{}; {} unique URLs already saved.".format(
             min(country_index + 1, len(countries)), len(countries), len(seen)
@@ -161,6 +225,13 @@ def main(argv=None):
                     print("[Country] {}".format(country_url), flush=True)
                     country_tree = client.fetch_tree(country_url, scroll_for=BRAND_LINKS)
                     brand_urls = matching_urls(country_tree, country_url, BRAND_PATH)
+                    if not brand_urls:
+                        print("[Empty] {} listed no designers; trying once more".format(country_url), flush=True)
+                        country_tree = client.fetch_tree(country_url, scroll_for=BRAND_LINKS)
+                        brand_urls = matching_urls(country_tree, country_url, BRAND_PATH)
+                    if not brand_urls:
+                        # Carrying on would skip the whole country and advance the checkpoint past it.
+                        raise ValueError("the {} page listed no designers, even after a second try".format(country))
                     if args.designers is not None:
                         brand_urls = brand_urls[:args.designers]
 
@@ -174,7 +245,7 @@ def main(argv=None):
                         ), flush=True)
 
                         added = 0
-                        found = fetch_designer_perfumes(client, brand_url)
+                        found, status = fetch_designer_perfumes(client, brand_url, counts)
                         for perfume_url in found:
                             if perfume_url in seen:
                                 continue
@@ -189,6 +260,13 @@ def main(argv=None):
                             save_progress(current_country_index, brand_urls[current_brand_index + 1])
                         else:
                             save_progress(current_country_index + 1)
+
+                        tally = stats.setdefault(country, Counter())
+                        tally["designers"] += 1
+                        tally["found"] += len(found)
+                        tally["new"] += added
+                        tally["empty"] += status == "empty"
+                        tally["short"] += status == "short"
 
                         print("[Saved] {} perfumes found, {} new; {} total unique URLs.".format(
                             len(found), added, len(seen)
@@ -220,6 +298,8 @@ def main(argv=None):
             )
         )
         return 1
+    finally:
+        print_summary(stats)
 
 
 if __name__ == "__main__":

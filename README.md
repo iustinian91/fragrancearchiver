@@ -248,6 +248,19 @@ changed versus a previous crawl. Run it before the export/clean/build steps.
 check. `db_helper.py` holds the SQLite helpers and URL completion ledger used
 by both scrapers.
 
+### Checking the crawl is complete
+
+`perfumes_extract_manifest.py` guards against a page that did not finish loading:
+
+- A **country page with no designers** is fetched once more; if it is still empty the crawl stops
+  without moving the checkpoint, so the country is not skipped.
+- A **designer page with no perfumes**, or with clearly fewer than the previous
+  `perfumes_manifest.txt` had (under 90% and at least 3 fewer), is fetched once more and the longer
+  list is kept. Still empty: listed in `perfumes_manifest.empty.txt`. Still short: listed with both
+  counts in `perfumes_manifest.short.txt`. The crawl goes on either way.
+- At the end (or when the crawl stops) it prints a per-country summary: designers, perfumes found,
+  new, empty and short.
+
 ### Being gentle with the site
 
 - **Slowdown:** a rate limit (HTTP 429) or a challenge doubles every pause before a request, up to
