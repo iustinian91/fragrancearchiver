@@ -9,6 +9,7 @@ from pathlib import Path
 from lxml import html
 
 import browser_client
+from charts import GENDER_KEYS, LONGEVITY_KEYS, SILLAGE_KEYS, WHEN_KEYS
 from browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
 from db_helper import PerfumesDBHelper
 from urls import read_manifest
@@ -173,13 +174,7 @@ def page_name_candidates(tree):
     texts.append(" ".join(tree.xpath("(//h1)[1]//text()")))
     texts += tree.xpath("//meta[@property='og:title']/@content")
     texts += tree.xpath("//title/text()")
-    seen, ordered = set(), []
-    for text in texts:
-        text = " ".join(str(text).split())
-        if text and text not in seen:
-            seen.add(text)
-            ordered.append(text)
-    return ordered
+    return _labels(texts)
 
 
 def launch_year(page_title, tree):
@@ -192,8 +187,6 @@ def launch_year(page_title, tree):
     return match.group(1) if match else None
 
 
-LONGEVITY_KEYS = ("poor", "weak", "moderate", "long lasting", "very long lasting")
-SILLAGE_KEYS = ("soft", "moderate", "heavy", "enormous")
 # The page as served already contains empty .tw-perf-card boxes; the vote rows (.space-y-2)
 # only appear once the page's script has drawn them, so wait for those.
 VOTES_BOX = ".tw-perf-card"
@@ -234,8 +227,6 @@ def _chart_rows(container):
     return rows
 
 
-GENDER_KEYS = ("female", "more female", "unisex", "more male", "male")
-WHEN_KEYS = ("winter", "spring", "summer", "fall", "day", "night")
 PERF_CARD = "//*[contains(concat(' ', normalize-space(@class), ' '), ' tw-perf-card ')]"
 WHEN_CHART = (
     "//span[contains(@class, 'tw-rating-card-label')][normalize-space()='When To Wear']"
@@ -245,17 +236,18 @@ WHEN_CHART = (
 
 def _as_votes(rows, keys, by_label):
     """Vote counts as {key: "count"}, or None unless the chart has every expected level. A chart
-    nobody has voted on is kept, with every count "0". `by_label` charts must carry exactly `keys` as their labels; the others
-    (longevity, sillage) have been renamed by the site, so they are matched by position."""
+    nobody has voted on is kept, with every count "0". `by_label` charts must carry exactly `keys`
+    as their labels; the others (longevity, sillage) have been renamed by the site, so they are
+    matched by position."""
     if len(rows) != len(keys) or (by_label and tuple(label for label, _ in rows) != keys):
         return None
-    votes = {key: str(count) for key, (_, count) in zip(keys, rows)}
-    return votes
+    return {key: str(count) for key, (_, count) in zip(keys, rows)}
 
 
 def page_charts(tree):
     """Vote charts on a perfume page as a dict with the keys longevity, sillage, gender and
-    when_to_wear; each is {level: "votes"} (all "0" when nobody voted) or None (chart missing or unexpected shape).
+    when_to_wear; each is {level: "votes"} (all "0" when nobody voted)
+    or None (chart missing or unexpected shape).
 
     The site's levels for longevity (very weak..eternal) and sillage (intimate..enormous) are
     stored by position under the original names (poor..very long lasting, soft..enormous), so

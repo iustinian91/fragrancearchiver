@@ -146,8 +146,8 @@ scrolls down until they appear (or a "Reviews" heading comes into view, or about
 shows large counts abbreviated (`2.6k`), so those votes are stored as rounded integers
 (2600). Its levels (very weak..eternal, intimate..enormous) are stored by position under
 the original names (`poor`..`very long lasting`, `soft`..`enormous`). A perfume with no
-votes is stored as missing. `python tests/test_votes.py` checks the parsing against a saved
-copy of the section, and `python tests/test_manifest.py` checks the manifest crawler's link
+votes is stored with every count 0. `python tests/test_votes.py` checks the parsing against a saved
+copy of the section, and `python tests/run_all.py` runs every offline test script. `python tests/test_manifest.py` checks the manifest crawler's link
 matching, scrolling, checkpoints and empty-page handling without a browser.
 
 ### Vote charts
@@ -229,7 +229,7 @@ After a failed run, `python smoke_test.py --only-failed smoke_run_<time>` re-tes
 3. `export.py` - export `perfumes.sqlite` to `perfumes.json`.
 4. `clean.py` - normalize `perfumes.json` into `perfumes_clean.json`. Perfumes
    whose Fragrantica page has no title are dropped (`--keep-unnamed` keeps them).
-5. `build_app_db.py` - build the searchable `app.db` from `perfumes_clean.json`.
+5. `build_app_db.py [--in perfumes_clean.json] [--out app.db]` - build the searchable `app.db`; it checks the new file (integrity, row counts) before replacing the old one.
 
 `perfumes.json` and `perfumes_clean.json` are generated intermediates and
 are not tracked in git; `perfumes.sqlite`, `notes.sqlite` and the manifests
@@ -260,6 +260,29 @@ by both scrapers.
   counts in `perfumes_manifest.short.txt`. The crawl goes on either way.
 - At the end (or when the crawl stops) it prints a per-country summary: designers, perfumes found,
   new, empty and short.
+
+### Pages that cannot be scraped
+
+- A page the site no longer has (HTTP 404 or 410) is listed in `perfumes_gone.txt` and never asked for again.
+- A server error (HTTP 5xx) is retried twice after a pause before the crawl stops.
+- A page that is incomplete (a vote card missing) or unreadable (blank page, malformed URL) is
+  skipped and listed once in `perfumes_incomplete.txt` or `perfumes_failed.txt`. It is tried again on
+  the next run, up to 3 tries in all; after that it is left alone until you run
+  `python perfumes_scraper.py --retry-skipped`. 5 skipped pages in a row stop the crawl, because
+  that points to a changed layout, not a bad page.
+- A designer page too long to scroll to the end keeps what it found and is listed in
+  `perfumes_manifest.short.txt`; the crawl goes on.
+- Repeated blocks end the run: 3 in a row, or 5 within the last 20 fetches. A `Retry-After` longer
+  than 15 minutes also ends it.
+
+### What each row records
+
+Every row stores `url` (always the canonical `https://www.fragrantica.com/...` form, whatever the
+manifest says) and `page_id` (the number at the end of the URL). `url` is unique, so scraping a
+page again replaces its row. `clean.py` uses the page id as the perfume's `id`, and `app.db` keeps
+the URL as `perfumes.source_url`. Rows without a page id (an older crawl without images) get a hash
+of brand, name and year instead. Rows of an older crawl get their URL from the id in the bottle
+image's file name. The chart levels live in one place, `charts.py`.
 
 ### Being gentle with the site
 

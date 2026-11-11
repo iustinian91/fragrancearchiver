@@ -99,7 +99,7 @@ with tempfile.TemporaryDirectory() as tmp:
         with open("perfumes_clean.json", "w") as f:
             f.write('[{"id": "1"}]')   # missing fields: the build fails part way
         try:
-            build_app_db.main()
+            build_app_db.main([])
         except KeyError:
             pass
         else:
@@ -107,11 +107,32 @@ with tempfile.TemporaryDirectory() as tmp:
         assert Path("app.db").read_text() == "previous good build"
         with open("perfumes_clean.json", "w") as f:
             f.write('[{"id": "1", "brand": "B", "name": "N", "slug": "b-n", "notes": {"general": ["Milk"]}, "perfumers": [{"name": "A B", "slug": "A_B"}]}]')
-        build_app_db.main()
+        build_app_db.main([])
         assert sqlite3.connect("app.db").execute("select count(*) from perfumes").fetchone()[0] == 1
         assert sqlite3.connect("app.db").execute("select kind, note from notes").fetchall() == [("general", "Milk")]
         assert sqlite3.connect("app.db").execute("select name, slug, rank from perfumers").fetchall() == [("A B", "A_B", 1)]
         assert not Path("app.db.building").exists()
+    finally:
+        os.chdir(old)
+
+# --in/--out, and a build that fails its own checks is not swapped in
+old = os.getcwd()
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    try:
+        Path("other.json").write_text('[{"id": "7", "brand": "B", "name": "N", "slug": "b-n"}]')
+        build_app_db.main(["--in", "other.json", "--out", "custom.db"])
+        assert sqlite3.connect("custom.db").execute("select id from perfumes").fetchone() == ("7",)
+        Path("custom.db").write_text("previous good build")
+        real_check, build_app_db.check_build = build_app_db.check_build, lambda *a: ["perfumes: 0 rows, expected 1"]
+        try:
+            build_app_db.main(["--in", "other.json", "--out", "custom.db"])
+            raise AssertionError("a failed check must stop the build")
+        except SystemExit as exc:
+            assert "did not pass its checks" in str(exc)
+        finally:
+            build_app_db.check_build = real_check
+        assert Path("custom.db").read_text() == "previous good build" and not Path("custom.db.building").exists()
     finally:
         os.chdir(old)
 print("failed app.db build keeps the previous database OK")

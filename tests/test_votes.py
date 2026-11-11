@@ -157,3 +157,10 @@ client._on_request(page)
 assert page.done == "continue"
 assert bc.BrowserClient(block_ads=False).block_summary() == "" and bc.BrowserClient().block_ads is False
 print("ad blocking allowlist OK")
+
+# a count that cannot be read makes the chart missing, not a chart of zeros
+assert clean._chart({"winter": "12", "spring": "oops", "summer": "1", "fall": "2", "day": "3", "night": "4"},
+                    {k: k for k in clean.WHEN_KEYS}, clean.WHEN_KEYS) is None
+import charts  # noqa: E402
+assert ps.GENDER_KEYS is charts.GENDER_KEYS is clean.GENDER_KEYS and clean.CHART_ORDER is charts.CHART_KEYS
+print("unreadable counts drop the chart; one copy of the chart levels OK")

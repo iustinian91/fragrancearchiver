@@ -1,4 +1,5 @@
 # build_app_db.py
+import argparse
 import json
 import os
 import sqlite3
@@ -7,13 +8,38 @@ from pathlib import Path
 DB = "app.db"
 DATA = "perfumes_clean.json"   # output of clean.py
 
-def main():
-    if not Path(DATA).exists():
-        raise SystemExit(f"Missing {DATA}. Run clean.py first.")
+def check_build(path, data, perf_rows, note_rows, vote_rows):
+    """Refuse to swap in a database that is damaged or does not hold what was read: returns a
+    list of problems (empty when it is fine)."""
+    conn = sqlite3.connect(path)
+    problems = []
+    result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    if result != "ok":
+        problems.append(f"integrity_check: {result}")
+    for table, expected in (("perfumes", len(perf_rows)), ("notes", len(note_rows)),
+                            ("perfume_votes", len(vote_rows))):
+        actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        if actual != expected:
+            problems.append(f"{table}: {actual} rows, expected {expected}")
+    fts = conn.execute("SELECT COUNT(*) FROM perfume_fts").fetchone()[0] if data else 0
+    if fts != len(perf_rows):
+        problems.append(f"perfume_fts: {fts} rows, expected {len(perf_rows)}")
+    conn.close()
+    return problems
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Build the app database from clean.py's output.")
+    parser.add_argument("--in", dest="inp", default=DATA, help="clean.py output (default: %(default)s)")
+    parser.add_argument("--out", default=DB, help="database to write (default: %(default)s)")
+    args = parser.parse_args(argv)
+    data_path, db_path = args.inp, args.out
+    if not Path(data_path).exists():
+        raise SystemExit(f"Missing {data_path}. Run clean.py first.")
 
     # Build into a temporary file and swap it in at the end, so a failed build leaves the
     # existing app.db untouched. Clear leftovers of an earlier failed build first.
-    building = DB + ".building"
+    building = db_path + ".building"
     for path in (building, building + "-wal", building + "-shm"):
         if os.path.exists(path):
             os.remove(path)
@@ -97,7 +123,7 @@ def main():
     CREATE INDEX idx_votes_chart    ON perfume_votes(chart, option);
     """)
 
-    with open(DATA, encoding="utf-8") as f:
+    with open(data_path, encoding="utf-8") as f:
         data = json.load(f)
 
     perf_rows, note_rows, acc_rows, fts_rows, vote_rows, perfumer_rows = [], [], [], [], [], []
@@ -158,13 +184,18 @@ def main():
         )
 
     conn.close()
+    problems = check_build(building, data, perf_rows, note_rows, vote_rows)
+    if problems:
+        os.remove(building)
+        raise SystemExit("The new {} did not pass its checks, so the existing one was kept:\n  {}".format(
+            db_path, "\n  ".join(problems)))
     # Also clear sidecar files of an older WAL-mode app.db: a stale -wal/-shm could otherwise
     # be applied to the new database.
     for suffix in ("-wal", "-shm"):
-        if os.path.exists(DB + suffix):
-            os.remove(DB + suffix)
-    os.replace(building, DB)
-    print(f"✅ Built {DB} with {len(perf_rows)} perfumes")
+        if os.path.exists(db_path + suffix):
+            os.remove(db_path + suffix)
+    os.replace(building, db_path)
+    print(f"✅ Built {db_path} with {len(perf_rows)} perfumes")
 
 if __name__ == "__main__":
     main()

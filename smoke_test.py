@@ -413,7 +413,7 @@ def stage_notes_scrape(report, args, workdir, all_notes):
 def stage_pipeline(report):
     import build_app_db
     stage = "pipeline"
-    build_app_db.main()
+    build_app_db.main([])
     conn = sqlite3.connect("app.db")
     cleaned = json.loads(Path("perfumes_clean.json").read_text(encoding="utf-8"))
     count = conn.execute("SELECT COUNT(*) FROM perfumes").fetchone()[0]

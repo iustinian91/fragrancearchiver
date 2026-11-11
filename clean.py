@@ -7,6 +7,8 @@ import hashlib
 import json
 import re
 
+from charts import CHART_KEYS, GENDER_KEYS, WHEN_KEYS
+
 WS = re.compile(r"\s+")
 
 # Longevity vote labels as stored by perfumes_scraper.py (underscores are stripped before lookup)
@@ -28,18 +30,11 @@ SIL_KEYS = {
     "heavy": "heavy", "strong": "heavy",
     "enormous": "enormous",
 }
-GENDER_KEYS = ("female", "more female", "unisex", "more male", "male")
-WHEN_KEYS = ("winter", "spring", "summer", "fall", "day", "night")
 
 # Display order of each chart's levels, and how its votes are turned into shares: the others
 # are single-choice (one vote picks one level), so shares add up to 1; "when to wear" lets a
 # vote pick several seasons/times, so each level is shown relative to the strongest one.
-CHART_ORDER = {
-    "longevity": ("poor", "weak", "moderate", "long lasting", "very long lasting"),
-    "sillage": ("soft", "moderate", "heavy", "enormous"),
-    "gender": GENDER_KEYS,
-    "when_to_wear": WHEN_KEYS,
-}
+CHART_ORDER = CHART_KEYS
 RELATIVE_TO_MAX = {"when_to_wear"}
 
 BRAND_ALIASES = {
@@ -127,7 +122,9 @@ def _normalize_counts(d: dict, key_map: dict) -> dict:
         if not nk:
             continue
         num = _to_int(v)
-        out[nk] = 0 if num is None else num
+        if num is None:
+            return {}      # a count that cannot be read makes the whole chart unusable; zero would be a lie
+        out[nk] = num
     return out
 
 
@@ -140,9 +137,9 @@ def _chart(raw, key_map, order, relative_to_max=False):
     `relative_to_max` is set."""
     counts = _normalize_counts(_json_or_dict(raw), key_map)
     counts = {level: counts[level] for level in order if level in counts}
-    base = max(counts.values(), default=0) if relative_to_max else sum(counts.values())
     if not counts:
         return None
+    base = max(counts.values()) if relative_to_max else sum(counts.values())
     return {
         "votes": counts,
         "share": {level: (round(n / base, 4) if base > 0 else 0.0) for level, n in counts.items()},
@@ -247,11 +244,13 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
         data = json.load(f)
     final = []
     seen_ids, seen_slugs = set(), set()
+    unnamed = 0
 
     for p in data:
         name = _best_name(p)
         # Fragrantica has a few placeholder pages with no title; they are useless in the app.
         if not name and not keep_unnamed:
+            unnamed += 1
             continue
 
         brand = _best_brand(p)
@@ -323,6 +322,8 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
             have = sum(1 for x in final if name in x["charts"])
             print(f"With {name} votes: {have} ({have * 100 // max(total, 1)}%)")
 
+    if unnamed:
+        print(f"Left out {unnamed} perfume(s) whose page has no title (use --keep-unnamed to keep them)")
     print(f"✅ Wrote {output_file}")
 
 

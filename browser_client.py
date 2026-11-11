@@ -233,9 +233,15 @@ class BrowserClient:
                 self.context.route("**/*", self._on_request)
             self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
             self.page.set_default_timeout(self.timeout_ms)
-        except BaseException:
+        except BaseException as exc:
             # __exit__ is not called when __enter__ fails; don't leak the driver process.
             self.__exit__(None, None, None)
+            text = str(exc).lower()
+            if self.profile_dir and any(w in text for w in ("singleton", "profile appears to be in use", "already in use")):
+                raise RuntimeError(
+                    "the browser profile folder '{}' is in use by another browser (a crawl still "
+                    "running, or one that did not close). Close it, or use --profile OTHER_FOLDER "
+                    "or --no-profile".format(self.profile_dir)) from exc
             raise
         return self
 

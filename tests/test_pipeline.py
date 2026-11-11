@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert p["charts"]["when_to_wear"]["share"]["winter"] == round(12800 / 13000, 4)
     assert p["popularity"] == sum(lon["votes"].values()) == 14519
     assert next(x for x in data if x["name"] == "Nothing")["charts"] == {}
-    build_app_db.main()
+    build_app_db.main([])
     conn = sqlite3.connect("app.db")
     rows = conn.execute("SELECT chart, option, position, votes, share FROM perfume_votes ORDER BY chart, position").fetchall()
     assert len(rows) == 5 + 4 + 5 + 6 and all(0 <= r[4] <= 1 for r in rows)
@@ -152,7 +152,7 @@ with tempfile.TemporaryDirectory() as tmp:
     with open("perfumes_clean.json", encoding="utf-8") as clean_file:
         rows = {x["name"]: x for x in json.load(clean_file)}
     assert rows["Black Orchid"]["id"] == "1018" and rows["Black Orchid"]["url"] == U1
-    build_app_db.main()
+    build_app_db.main([])
     conn = sqlite3.connect("app.db")
     assert conn.execute("SELECT id, source_url FROM perfumes WHERE name='Black Orchid'").fetchone() == ("1018", U1)
     conn.close()

@@ -8,6 +8,8 @@ dicts, so it can be tested without a browser (tests/test_smoke.py).
 
 import re
 
+from charts import CHART_KEYS
+
 PASS, FAIL, UNAVAILABLE = "PASS", "FAIL", "UNAVAILABLE"
 
 # What each chart is called on the page, in order. Longevity and sillage are stored under older
@@ -15,15 +17,10 @@ PASS, FAIL, UNAVAILABLE = "PASS", "FAIL", "UNAVAILABLE"
 SITE_LABELS = {
     "longevity": ("very weak", "weak", "moderate", "long lasting", "eternal"),
     "sillage": ("intimate", "moderate", "strong", "enormous"),
-    "gender": ("female", "more female", "unisex", "more male", "male"),
-    "when_to_wear": ("winter", "spring", "summer", "fall", "day", "night"),
+    "gender": CHART_KEYS["gender"],
+    "when_to_wear": CHART_KEYS["when_to_wear"],
 }
-STORED_KEYS = {
-    "longevity": ("poor", "weak", "moderate", "long lasting", "very long lasting"),
-    "sillage": ("soft", "moderate", "heavy", "enormous"),
-    "gender": SITE_LABELS["gender"],
-    "when_to_wear": SITE_LABELS["when_to_wear"],
-}
+STORED_KEYS = CHART_KEYS
 RELATIVE_TO_MAX = {"when_to_wear"}
 BAR_TOLERANCE = 0.03   # displayed bars use exact counts, ours use the site's rounded ones
 

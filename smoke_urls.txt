@@ -15,3 +15,5 @@
 /perfume/A-Lab-on-Fire/Made-in-Heaven-27620.html                   # earlier crawl found no notes or accords
 /perfume/Abercrombie-Fitch/41-3510.html                            # numeric title, earlier crawl found no notes
 /perfume/18-21-Man-Made/Sweet-Tobacco-Spirits-37691.html           # digits and punctuation in the brand
+/perfume/Novaya-Zarya/Aqua-Lumiere-19997.html                      # brand written differently in the URL and on the page, in two scripts
+/perfume/Matin-d-Ete/Matin-d-Ete-13467.html                         # a chart nobody has voted on (stored as zeros)

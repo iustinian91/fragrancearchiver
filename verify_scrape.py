@@ -39,6 +39,31 @@ def load(db):
     return rows, progress
 
 
+def skipped_counts(db):
+    """(pages given up after repeated failures, pages the site no longer has); (0, 0) for a database
+    that has no such tables."""
+    conn = sqlite3.connect("file:{}?mode=ro".format(db), uri=True)
+    try:
+        failed = conn.execute("SELECT COUNT(*) FROM skip_attempts").fetchone()[0]
+    except sqlite3.OperationalError:
+        failed = 0
+    try:
+        gone = conn.execute("SELECT COUNT(*) FROM gone_urls").fetchone()[0]
+    except sqlite3.OperationalError:
+        gone = 0
+    conn.close()
+    return failed, gone
+
+
+def zero_vote(value):
+    """True for a stored vote chart whose counts are all zero (nobody has voted)."""
+    try:
+        data = json.loads(value or "null")
+    except (TypeError, ValueError):
+        return False
+    return isinstance(data, dict) and bool(data) and all(str(v).isdigit() and not int(v) for v in data.values())
+
+
 def info(row):
     try:
         data = json.loads(row[1])
@@ -109,6 +134,12 @@ def main():
     for i, field in enumerate(FIELDS):
         count = sum(1 for r in rows if present(r[2 + i]))
         print("  {:<13}{:>7} {:>6.1f}%".format(field, count, 100 * count / n))
+    zero = {field: sum(1 for r in rows if zero_vote(r[2 + i]))
+            for i, field in enumerate(FIELDS) if field in ("longevity", "sillage", "gender", "when_to_wear")}
+    print("  charts nobody has voted on (stored as zeros, not counted above): " +
+          ", ".join("{} {}".format(f, n) for f, n in zero.items()))
+    failed, gone = skipped_counts(args.db)
+    print("  pages still failing after retries: {}   pages gone from the site: {}".format(failed, gone))
     from_page = Counter((info(r).get("title_source"), info(r).get("brand_source")) for r in rows)
     print("  names page/page: {:.1f}%   (url fallbacks: {})".format(
         100 * from_page[("page", "page")] / n, len(rows) - from_page[("page", "page")]))
