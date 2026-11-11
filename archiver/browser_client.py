@@ -13,6 +13,7 @@ from lxml import html
 from patchright.sync_api import Error as PatchrightError
 from patchright.sync_api import sync_playwright
 
+from archiver import paths
 from archiver.urls import BASE_URL, SITE_HOSTS, canonical_url  # noqa: F401  (re-exported for the crawlers)
 
 REQUEST_TIMEOUT_MS = 60000
@@ -171,7 +172,7 @@ def add_browser_arguments(parser):
         help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
              "(ads and trackers); prints what was blocked when the browser closes")
     parser.add_argument(
-        "--profile", default="browser_profile", metavar="DIR",
+        "--profile", default=str(paths.profile_dir()), metavar="DIR",
         help="folder that keeps the browser's cookies between runs, so a challenge that was "
              "cleared once stays cleared (default %(default)s)")
     parser.add_argument(

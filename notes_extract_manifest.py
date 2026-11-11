@@ -7,12 +7,12 @@ from urllib.parse import urljoin
 
 from archiver.urls import read_manifest, too_small_to_replace
 
-from archiver import browser_client
+from archiver import browser_client, paths
 from archiver.browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, matching_urls
 
-OUTPUT_PATH = Path("notes_manifest.txt")
-TEMP_OUTPUT_PATH = Path("notes_manifest.txt.tmp")
-NEW_PATH = Path("notes_manifest.new.txt")   # a list too small to replace the manifest is kept here
+OUTPUT_PATH = paths.manifest_file("notes_manifest.txt")
+TEMP_OUTPUT_PATH = paths.manifest_file("notes_manifest.txt.tmp")
+NEW_PATH = paths.manifest_file("notes_manifest.new.txt")   # a list too small to replace the manifest is kept here
 NOTE_PATH = re.compile(r"/notes/[^/]+-\d+\.html?$", re.IGNORECASE)
 
 
@@ -24,6 +24,7 @@ def main(argv=None):
     browser_client.add_browser_arguments(parser)
     args = parser.parse_args(argv)
     browser_client.apply_browser_arguments(args)
+    paths.ensure_parent(OUTPUT_PATH)
     # Fetch and validate the page before touching the existing manifest.
     try:
         with BrowserClient() as client:

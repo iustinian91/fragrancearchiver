@@ -14,6 +14,7 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 
+from archiver import paths
 from archiver.urls import canonical_url, read_manifest
 
 PAGE_ID = re.compile(r"-(\d+)\.html?$")
@@ -95,10 +96,10 @@ def page_id(row):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", default="perfumes.sqlite")
-    ap.add_argument("--manifest", default="perfumes_manifest.txt")
+    ap.add_argument("--db", default=str(paths.database_file("perfumes.sqlite")))
+    ap.add_argument("--manifest", default=str(paths.manifest_file("perfumes_manifest.txt")))
     ap.add_argument("--old", help="previous perfumes.sqlite to compare against")
-    ap.add_argument("--images", default="fragrantica_images/perfumes")
+    ap.add_argument("--images", default=str(paths.image_dir("perfumes")))
     args = ap.parse_args()
 
     rows, progress = load(args.db)

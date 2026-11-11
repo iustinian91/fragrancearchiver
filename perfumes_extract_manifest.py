@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 
 from archiver.urls import canonical_url, read_manifest, too_small_to_replace
 
-from archiver import browser_client
+from archiver import browser_client, paths
 from archiver.browser_client import (
     BASE_URL,
     FETCH_ERRORS,
@@ -19,14 +19,14 @@ from archiver.browser_client import (
     matching_urls,
 )
 
-OUTPUT_PATH = Path("perfumes_manifest.txt")
-TEMP_OUTPUT_PATH = Path("perfumes_manifest.txt.tmp")
-STATE_PATH = Path("perfumes_manifest.state.json")
-EMPTY_PATH = Path("perfumes_manifest.empty.txt")  # designer pages that stayed empty after a retry
-SHORT_PATH = Path("perfumes_manifest.short.txt")  # designers with fewer perfumes than last time: url, now, before
+OUTPUT_PATH = paths.manifest_file("perfumes_manifest.txt")
+TEMP_OUTPUT_PATH = paths.manifest_file("perfumes_manifest.txt.tmp")
+STATE_PATH = paths.manifest_file("perfumes_manifest.state.json")
+EMPTY_PATH = paths.manifest_file("perfumes_manifest.empty.txt")  # designer pages that stayed empty after a retry
+SHORT_PATH = paths.manifest_file("perfumes_manifest.short.txt")  # designers with fewer perfumes than last time: url, now, before
 SHORT_SHARE = 0.9     # a designer with under 90% of the perfumes it had in the previous manifest ...
 SHORT_MIN_GAP = 3     # ... and at least 3 fewer, is fetched once more, and recorded if still short
-NEW_PATH = Path("perfumes_manifest.new.txt")      # a crawl too small to replace the manifest is kept here
+NEW_PATH = paths.manifest_file("perfumes_manifest.new.txt")      # a crawl too small to replace the manifest is kept here
 LEGACY_TEMP_PATH = Path("manifest.txt.tmp")
 LEGACY_OUTPUT_PATH = Path("manifest.txt")
 
@@ -221,6 +221,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     browser_client.apply_browser_arguments(args)
     countries = [args.country] if args.country else COUNTRIES
+    paths.ensure_parent(OUTPUT_PATH)
 
     try:
         country_index, resume, seen = load_progress()

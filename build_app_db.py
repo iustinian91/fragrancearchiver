@@ -5,8 +5,8 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB = "app.db"
-DATA = "perfumes_clean.json"   # output of clean.py
+from archiver import paths
+
 
 def check_build(path, data, perf_rows, note_rows, vote_rows):
     """Refuse to swap in a database that is damaged or does not hold what was read: returns a
@@ -30,8 +30,8 @@ def check_build(path, data, perf_rows, note_rows, vote_rows):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build the app database from clean.py's output.")
-    parser.add_argument("--in", dest="inp", default=DATA, help="clean.py output (default: %(default)s)")
-    parser.add_argument("--out", default=DB, help="database to write (default: %(default)s)")
+    parser.add_argument("--in", dest="inp", default=str(paths.export_file("perfumes_clean.json")), help="clean.py output (default: %(default)s)")
+    parser.add_argument("--out", default=str(paths.database_file("app.db")), help="database to write (default: %(default)s)")
     args = parser.parse_args(argv)
     data_path, db_path = args.inp, args.out
     if not Path(data_path).exists():
@@ -39,6 +39,7 @@ def main(argv=None):
 
     # Build into a temporary file and swap it in at the end, so a failed build leaves the
     # existing app.db untouched. Clear leftovers of an earlier failed build first.
+    paths.ensure_parent(db_path)
     building = db_path + ".building"
     for path in (building, building + "-wal", building + "-shm"):
         if os.path.exists(path):

@@ -3,6 +3,7 @@
 import json
 import re
 import sqlite3
+from pathlib import Path
 
 from archiver.urls import canonical_url
 
@@ -18,6 +19,7 @@ class _TableDB:
 
     def __init__(self, db_name):
         self.db_name = db_name
+        Path(db_name).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(db_name)
 
     def setup(self):

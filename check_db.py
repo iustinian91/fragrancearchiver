@@ -1,8 +1,11 @@
 import os
 import sqlite3
 
+from archiver import paths
 
-def print_sample_rows(db_path='perfumes.sqlite', limit=10):
+
+def print_sample_rows(db_path=None, limit=10):
+    db_path = db_path or paths.database_file('perfumes.sqlite')
     # sqlite3.connect() silently creates an empty file when the path is wrong.
     if not os.path.exists(db_path):
         raise SystemExit(f"Missing {db_path}. Run perfumes_scraper.py first.")

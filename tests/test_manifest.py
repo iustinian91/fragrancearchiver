@@ -9,6 +9,8 @@ from lxml import html
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from archiver import paths  # noqa: E402
+paths.use_flat()   # these tests work in a scratch folder and expect plain file names
 try:
     import patchright  # noqa: F401
 except ImportError:

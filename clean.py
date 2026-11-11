@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 
+from archiver import paths
 from archiver.charts import CHART_KEYS, GENDER_KEYS, WHEN_KEYS
 
 WS = re.compile(r"\s+")
@@ -239,7 +240,9 @@ def _stable_id(brand, name, year, dup=0):
 
 
 # ---------- main clean ----------
-def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=False, keep_unnamed=False):
+def clean(input_file=None, output_file=None, report=False, keep_unnamed=False):
+    input_file = input_file or paths.export_file("perfumes.json")
+    output_file = paths.ensure_parent(output_file or paths.export_file("perfumes_clean.json"))
     with open(input_file, encoding="utf-8") as f:
         data = json.load(f)
     final = []
@@ -329,8 +332,8 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", default="perfumes.json")
-    ap.add_argument("--out", dest="out", default="perfumes_clean.json")
+    ap.add_argument("--in", dest="inp", default=str(paths.export_file("perfumes.json")))
+    ap.add_argument("--out", dest="out", default=str(paths.export_file("perfumes_clean.json")))
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--keep-unnamed", action="store_true", help="keep perfumes whose page has no title")
     args = ap.parse_args()

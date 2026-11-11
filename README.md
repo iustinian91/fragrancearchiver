@@ -22,6 +22,26 @@ HTTP 429 responses are retried for the same URL after the server's
 invalid, the client waits five minutes plus the buffer. Other HTTP errors and
 Cloudflare challenges stop the current crawl without marking the URL complete.
 
+## Where files live
+
+Code is in the project folder (`archiver/` holds the shared helpers); everything the commands
+generate goes under one folder, `data/` (set `ARCHIVER_DATA_DIR` to put it elsewhere):
+
+```
+data/
+  manifests/        perfumes_manifest.txt, notes_manifest.txt and their working files
+  databases/        perfumes.sqlite, notes.sqlite, app.db
+  exports/          perfumes.json, perfumes_clean.json (rebuildable)
+  images/           perfumes/, notes/
+  logs/             skipped, gone and failed page lists, and the skipped pages themselves
+  browser_profile/  the browser's cookies, kept between runs
+  dry_runs/         one folder per dry test run
+```
+
+Names in the rest of this file are shortened (`perfumes.sqlite` means `data/databases/perfumes.sqlite`).
+Coming from an older checkout with the files in the project folder? Run `python migrate_layout.py`
+to see what would move, then `python migrate_layout.py --apply`. Nothing is overwritten.
+
 ## Perfume URL discovery
 
 Run:
@@ -31,20 +51,20 @@ python perfumes_extract_manifest.py
 ```
 
 The browser opens visibly. The crawler visits country and designer pages. It
-writes discovered URLs incrementally to `perfumes_manifest.txt.tmp` and saves
-its next country/designer position in `perfumes_manifest.state.json`.
+writes discovered URLs incrementally to `data/manifests/perfumes_manifest.txt.tmp` and saves
+its next country/designer position in `data/manifests/perfumes_manifest.state.json`.
 
 Country and designer pages load their lists as you scroll, so the crawler scrolls each
 one until the number of links stops growing. If a page is still growing after 150 scroll
 steps it stops instead of saving a partial list. A designer page with no perfumes is
-fetched once more; if it is still empty it is noted in `perfumes_manifest.empty.txt` and
+fetched once more; if it is still empty it is noted in `data/manifests/perfumes_manifest.empty.txt` and
 the crawl continues. Only links on fragrantica.com are kept, written as
 `https://www.fragrantica.com/...` without query strings, so each perfume has one URL.
 
 The checkpoint stores the next designer's URL (not a position in a list), so it still
 lands in the right place if the page lists designers in a slightly different order next
 time. If the saved designer is no longer listed, or the checkpoint exists without
-`perfumes_manifest.txt.tmp`, the crawler stops and says so instead of guessing.
+`data/manifests/perfumes_manifest.txt.tmp`, the crawler stops and says so instead of guessing.
 
 If an HTTP error or a Cloudflare challenge is detected, the crawl stops and
 preserves the manifest and checkpoint. If a challenge page appears, handle
@@ -56,7 +76,7 @@ all countries are processed, the temporary manifest is renamed to
 `perfumes_manifest.txt`.
 
 The crawler also migrates legacy `manifest.txt.tmp` or `manifest.txt` files
-to the new `perfumes_manifest.txt.tmp` checkpoint name when appropriate.
+to the new `data/manifests/perfumes_manifest.txt.tmp` checkpoint name when appropriate.
 If a legacy manifest exists without a checkpoint, its URLs are retained and
 discovery safely restarts from the first country, skipping duplicates.
 
@@ -92,7 +112,7 @@ recorded as complete. It can therefore resume even if manifest entries are
 reordered or new URLs are added.
 
 Images are downloaded through the same browser context and stored in
-`fragrantica_images/perfumes/` and `fragrantica_images/notes/`.
+`data/images/perfumes/` and `data/images/notes/`.
 
 ### Existing database migration
 
@@ -156,10 +176,10 @@ Besides longevity and sillage, each perfume page's **gender** chart (female, mor
 unisex, more male, male) and **when to wear** chart (winter, spring, summer, fall, day,
 night) are stored as vote counts in the `gender` and `when_to_wear` columns. The perfumers named on the page are stored in `perfumers` (name and `/noses/` slug; `perfumers` in `app.db`). Top, middle and
 base notes are stored in `notes`; a page that shows one flat list of notes (no pyramid) is
-stored under `general` and kept in its own `general` group in `perfumes_clean.json` and `app.db`.
+stored under `general` and kept in its own `general` group in `data/exports/perfumes_clean.json` and `app.db`.
 A chart nobody has voted on is stored with every count 0 (and every share 0); a chart missing from the page is `null`.
 A perfume whose page gives no launch year has no year (`null`; shown as unknown). `clean.py` normalizes every chart into
-`{"votes": {...}, "share": {...}}` in `perfumes_clean.json`: for longevity, sillage and gender
+`{"votes": {...}, "share": {...}}` in `data/exports/perfumes_clean.json`: for longevity, sillage and gender
 the shares add up to 1; for when to wear a voter can pick several seasons, so each level is
 shown relative to the strongest one (the strongest is 1.0). `build_app_db.py` writes them
 to the `perfume_votes` table (`perfume_id, chart, option, position, votes, share`), and
@@ -197,7 +217,7 @@ python dry_test.py            # about 15 minutes, a few dozen page loads
 python dry_test.py --screenshots 5 --designers 2 --notes 5   # smaller, with chart screenshots
 ```
 
-It runs every stage against the real site in a new `dry_run_<time>/` folder, with its own
+It runs every stage against the real site in a new `data/dry_runs/dry_run_<time>/` folder, with its own
 databases, manifests and images: the URL crawl for one country (3 designers), the notes
 index, 15 hand-picked perfume pages from `dry_urls.txt` (apostrophes, accents, very old
 ids, no pyramid, few votes, ...) plus 3 from the crawl, 8 note pages, then re-runs, export,
@@ -226,12 +246,12 @@ After a failed run, `python dry_test.py --only-failed dry_run_<time>` re-tests j
 1. `perfumes_extract_manifest.py` / `notes_extract_manifest.py` - collect page URLs.
 2. `perfumes_scraper.py` / `notes_scraper.py` - scrape URLs into
    `perfumes.sqlite` / `notes.sqlite`.
-3. `export.py` - export `perfumes.sqlite` to `perfumes.json`.
-4. `clean.py` - normalize `perfumes.json` into `perfumes_clean.json`. Perfumes
+3. `export.py` - export `perfumes.sqlite` to `data/exports/perfumes.json`.
+4. `clean.py` - normalize `data/exports/perfumes.json` into `data/exports/perfumes_clean.json`. Perfumes
    whose Fragrantica page has no title are dropped (`--keep-unnamed` keeps them).
 5. `build_app_db.py [--in perfumes_clean.json] [--out app.db]` - build the searchable `app.db`; it checks the new file (integrity, row counts) before replacing the old one.
 
-`perfumes.json` and `perfumes_clean.json` are generated intermediates and
+`data/exports/perfumes.json` and `data/exports/perfumes_clean.json` are generated intermediates and
 are not tracked in git; `perfumes.sqlite`, `notes.sqlite` and the manifests
 are the source data, and `app.db` is the shipped output. After re-scraping or
 changing `clean.py`, rerun steps 3-5 so `app.db` stays in sync:
@@ -256,8 +276,8 @@ by both scrapers.
   without moving the checkpoint, so the country is not skipped.
 - A **designer page with no perfumes**, or with clearly fewer than the previous
   `perfumes_manifest.txt` had (under 90% and at least 3 fewer), is fetched once more and the longer
-  list is kept. Still empty: listed in `perfumes_manifest.empty.txt`. Still short: listed with both
-  counts in `perfumes_manifest.short.txt`. The crawl goes on either way.
+  list is kept. Still empty: listed in `data/manifests/perfumes_manifest.empty.txt`. Still short: listed with both
+  counts in `data/manifests/perfumes_manifest.short.txt`. The crawl goes on either way.
 - At the end (or when the crawl stops) it prints a per-country summary: designers, perfumes found,
   new, empty and short.
 
@@ -271,7 +291,7 @@ by both scrapers.
   `python perfumes_scraper.py --retry-skipped`. 5 skipped pages in a row stop the crawl, because
   that points to a changed layout, not a bad page.
 - A designer page too long to scroll to the end keeps what it found and is listed in
-  `perfumes_manifest.short.txt`; the crawl goes on.
+  `data/manifests/perfumes_manifest.short.txt`; the crawl goes on.
 - Repeated blocks end the run: 3 in a row, or 5 within the last 20 fetches. A `Retry-After` longer
   than 15 minutes also ends it.
 

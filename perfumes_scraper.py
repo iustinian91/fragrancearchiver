@@ -8,19 +8,19 @@ from pathlib import Path
 
 from lxml import html
 
-from archiver import browser_client
+from archiver import browser_client, paths
 from archiver.charts import GENDER_KEYS, LONGEVITY_KEYS, SILLAGE_KEYS, WHEN_KEYS
 from archiver.browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
 from archiver.db_helper import PerfumesDBHelper
 from archiver.urls import read_manifest
 
-IMAGE_DIR = Path("fragrantica_images/perfumes")
+IMAGE_DIR = paths.image_dir("perfumes")
 MAX_SKIP_ATTEMPTS = 3      # a page that is skipped this many times is left alone until --retry-skipped
 MAX_SKIPS_IN_A_ROW = 5     # this many skipped pages in a row stop the crawl: something has changed
-INCOMPLETE_FILE = "perfumes_incomplete.txt"   # url and reason, one per line
-INCOMPLETE_DIR = Path("perfumes_incomplete")   # the pages themselves, as they were read
-GONE_FILE = "perfumes_gone.txt"               # pages the site no longer has (HTTP 404/410): url and reason
-FAILED_FILE = "perfumes_failed.txt"           # pages that could not be read (blank, malformed): url and reason
+INCOMPLETE_FILE = paths.log_file("perfumes_incomplete.txt")   # url and reason, one per line
+INCOMPLETE_DIR = paths.log_file("perfumes_incomplete")   # the pages themselves, as they were read
+GONE_FILE = paths.log_file("perfumes_gone.txt")               # pages the site no longer has (HTTP 404/410): url and reason
+FAILED_FILE = paths.log_file("perfumes_failed.txt")           # pages that could not be read (blank, malformed): url and reason
 PERFUME_URL = re.compile(
     r"/perfume/(?P<brand>[^/]+)/(?P<title>.+)-\d+\.html?$",
     re.IGNORECASE,
@@ -417,7 +417,7 @@ def scrape_perfume(client, url):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--db", default="perfumes.sqlite", help="SQLite file to write (default: %(default)s)"
+        "--db", default=str(paths.database_file("perfumes.sqlite")), help="SQLite file to write (default: %(default)s)"
     )
     parser.add_argument(
         "--limit", type=int,
@@ -438,9 +438,10 @@ def main(argv=None):
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        perfume_urls = read_manifest("perfumes_manifest.txt")
+        manifest = paths.manifest_file("perfumes_manifest.txt")
+        perfume_urls = read_manifest(manifest)
         if not perfume_urls:
-            raise FileNotFoundError("perfumes_manifest.txt is missing or empty; run perfumes_extract_manifest.py")
+            raise FileNotFoundError("{} is missing or empty; run perfumes_extract_manifest.py".format(manifest))
         db.migrate_legacy_progress(perfume_urls)
         db.backfill_urls(perfume_urls)
         completed = db.completed_urls()
@@ -488,7 +489,7 @@ def main(argv=None):
                     INCOMPLETE_DIR.mkdir(parents=True, exist_ok=True)
                     (INCOMPLETE_DIR / url.rsplit("/", 1)[-1]).write_bytes(html.tostring(exc.tree))
                     if db.note_skip(url, str(exc)) == 1:    # one log line per page, not one per try
-                        with open(INCOMPLETE_FILE, "a", encoding="utf-8") as log:
+                        with open(paths.ensure_parent(INCOMPLETE_FILE), "a", encoding="utf-8") as log:
                             log.write("{}\t{}\n".format(url, exc))
                     skipped_in_a_row += 1
                     if skipped_in_a_row >= MAX_SKIPS_IN_A_ROW:
@@ -499,7 +500,7 @@ def main(argv=None):
                     print("  [gone] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     db.mark_gone(url, str(exc))
                     newly_gone.append(url)
-                    with open(GONE_FILE, "a", encoding="utf-8") as log:
+                    with open(paths.ensure_parent(GONE_FILE), "a", encoding="utf-8") as log:
                         log.write("{}\t{}\n".format(url, exc))
                     continue
                 except ValueError as exc:
@@ -508,7 +509,7 @@ def main(argv=None):
                     print("  [unreadable] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     unreadable.append(url)
                     if db.note_skip(url, str(exc)) == 1:
-                        with open(FAILED_FILE, "a", encoding="utf-8") as log:
+                        with open(paths.ensure_parent(FAILED_FILE), "a", encoding="utf-8") as log:
                             log.write("{}\t{}\n".format(url, exc))
                     skipped_in_a_row += 1
                     if skipped_in_a_row >= MAX_SKIPS_IN_A_ROW:

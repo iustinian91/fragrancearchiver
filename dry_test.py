@@ -37,16 +37,23 @@ REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
 from archiver import dry_oracle as so  # noqa: E402
-from archiver import browser_client  # noqa: E402
+from archiver import browser_client, paths  # noqa: E402
 from archiver.browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
 from archiver.urls import canonical_url  # noqa: E402
+
+START = Path.cwd()       # where the command was started: the real data folder is relative to this
+paths.use_flat()        # inside a dry run folder every file sits directly in it, under its plain name
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
 BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.IGNORECASE)
 PERFUME_URL = re.compile(r"https://www\.fragrantica\.com/perfume/[^/?#]+/[^/?#]+-(\d+)\.html")
-PRODUCTION = ("perfumes.sqlite", "notes.sqlite", "app.db", "perfumes.json", "perfumes_clean.json",
-              "perfumes_manifest.txt", "perfumes_manifest.txt.tmp", "perfumes_manifest.state.json",
-              "notes_manifest.txt")
+# The real data the dry test must leave alone (where the commands keep it outside a dry run).
+PRODUCTION = tuple(
+    [paths.standard("databases", n) for n in ("perfumes.sqlite", "notes.sqlite", "app.db")]
+    + [paths.standard("exports", n) for n in ("perfumes.json", "perfumes_clean.json")]
+    + [paths.standard("manifests", n) for n in (
+        "perfumes_manifest.txt", "perfumes_manifest.txt.tmp", "perfumes_manifest.state.json",
+        "notes_manifest.txt")])
 
 
 class Blocked(Exception):
@@ -100,11 +107,11 @@ def run_main(main, argv):
 def fingerprint():
     state = {}
     for name in PRODUCTION:
-        path = REPO / name
-        state[name] = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
-    for folder in ("fragrantica_images",):
-        path = REPO / folder
-        state[folder] = sum(1 for _ in path.rglob("*")) if path.exists() else None
+        path = START / name
+        state[str(name)] = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    for folder in (paths.standard("images"),):
+        path = START / folder
+        state[str(folder)] = sum(1 for _ in path.rglob("*")) if path.exists() else None
     return state
 
 
@@ -251,12 +258,22 @@ def idempotence(report, stage, main, argv, db, table, workdir, manifest, urls):
                "records {} -> {}".format(before, again))
 
 
+def earlier_runs():
+    """Folders of earlier dry runs: in data/dry_runs, or (older runs) next to where this was started."""
+    found = []
+    for folder in (START / paths.standard("dry_runs"), START):
+        for pattern in ("dry_run_*", "smoke_run_*"):
+            found += [p for p in folder.glob(pattern) if (p / "report.json").is_file()]
+    return found
+
+
 def failed_urls(previous_run):
     """Perfume page URLs that had a FAIL in an earlier dry run's report, in the order tested."""
     previous = Path(previous_run)
+    if not previous.is_dir():       # just the folder's name was given
+        previous = next((p for p in earlier_runs() if p.name == previous.name), previous)
     if not (previous / "report.json").is_file() or not (previous / "perfumes_manifest.txt").is_file():
-        runs = sorted(p.name for p in (p for pattern in ("dry_run_*", "smoke_run_*") for p in Path(".").glob(pattern)) if (p / "report.json").is_file()
-                      and (p / "perfumes_manifest.txt").is_file())
+        runs = sorted(p.name for p in earlier_runs() if (p / "perfumes_manifest.txt").is_file())
         raise SystemExit(
             "No usable earlier run at '{}' (it needs report.json and perfumes_manifest.txt).\n"
             "Earlier runs here that can be re-tested: {}".format(previous, ", ".join(runs) or "none")
@@ -271,10 +288,11 @@ def failed_urls(previous_run):
     return urls
 
 
-def random_urls(count, seed, manifest="perfumes_manifest.txt"):
+def random_urls(count, seed, manifest=None):
     """`count` perfume page URLs picked at random from the real manifest (read only). The same
     seed gives the same pages, so a failing sample can be repeated."""
     import random
+    manifest = manifest or START / paths.standard("manifests", "perfumes_manifest.txt")
     path = Path(manifest)
     if not path.is_file():
         raise SystemExit("--random needs {} (run perfumes_extract_manifest.py first).".format(manifest))
@@ -433,7 +451,8 @@ def stage_pipeline(report):
     report.add(stage, "", "search index covers every perfume", PASS if fts == count else FAIL, "{} indexed".format(fts))
     conn.close()
     result = subprocess.run([sys.executable, str(REPO / "verify_scrape.py"), "--db", "perfumes.sqlite",
-                             "--manifest", "perfumes_manifest.txt"], capture_output=True, text=True)
+                             "--manifest", "perfumes_manifest.txt",
+                             "--images", "fragrantica_images/perfumes"], capture_output=True, text=True)
     (Path("verify_scrape.txt")).write_text(result.stdout + result.stderr, encoding="utf-8")
     report.add(stage, "", "verify_scrape.py", PASS if result.returncode == 0 else FAIL,
                "exit {}; see verify_scrape.txt".format(result.returncode))
@@ -476,7 +495,7 @@ def main(argv=None):
                         help="re-test only the perfume page URLs listed in FILE (one per line)")
     parser.add_argument("--block-ads", action="store_true", dest="block_ads",
                         help="run the scrapers and the oracle with ad blocking on (compare with a run without it)")
-    parser.add_argument("--workdir", help="new folder for this run (default dry_run_<time>)")
+    parser.add_argument("--workdir", help="new folder for this run (default data/dry_runs/dry_run_<time>)")
     args = parser.parse_args(argv)
     browser_client.BLOCK_ADS = args.block_ads
     browser_client.PROFILE_DIR = ""     # every dry run starts with a fresh browser
@@ -498,7 +517,7 @@ def main(argv=None):
         args.only = [u if u.startswith("http") else "https://www.fragrantica.com" + u for u in args.only if u]
 
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    workdir = Path(args.workdir or "dry_run_" + datetime.now().strftime("%Y%m%d_%H%M%S")).resolve()
+    workdir = Path(args.workdir or START / paths.standard("dry_runs", "dry_run_" + datetime.now().strftime("%Y%m%d_%H%M%S"))).resolve()
     if workdir == REPO or workdir in REPO.parents or (workdir.exists() and any(workdir.iterdir())):
         print("Refusing to use {}: pick a new or empty folder that is not the project folder.".format(workdir))
         return 1

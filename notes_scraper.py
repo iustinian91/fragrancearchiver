@@ -6,12 +6,12 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from archiver import browser_client
+from archiver import browser_client, paths
 from archiver.browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
 from archiver.db_helper import NotesDBHelper
 from archiver.urls import read_manifest
 
-IMAGE_DIR = Path("fragrantica_images/notes")
+IMAGE_DIR = paths.image_dir("notes")
 GONE_FILE = "notes_gone.txt"       # pages the site no longer has (HTTP 404/410): url and reason
 FAILED_FILE = "notes_failed.txt"   # pages that could not be read: url and reason
 # The note's own photos: .../mdimg/sastojci/t.75.jpg, t2.75.jpg, t3.75.jpg (up to three per note).
@@ -52,7 +52,7 @@ def scrape_note(client, url):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--db", default="notes.sqlite", help="SQLite file to write (default: %(default)s)"
+        "--db", default=str(paths.database_file("notes.sqlite")), help="SQLite file to write (default: %(default)s)"
     )
     parser.add_argument(
         "--limit", type=int, help="scrape at most this many pages (for trial runs)"
@@ -66,9 +66,10 @@ def main(argv=None):
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        note_urls = read_manifest("notes_manifest.txt")
+        manifest = paths.manifest_file("notes_manifest.txt")
+        note_urls = read_manifest(manifest)
         if not note_urls:
-            raise FileNotFoundError("notes_manifest.txt is missing or empty; run notes_extract_manifest.py")
+            raise FileNotFoundError("{} is missing or empty; run notes_extract_manifest.py".format(manifest))
         db.migrate_legacy_progress(note_urls)
         completed = db.completed_urls()
     except (OSError, ValueError, RuntimeError) as exc:

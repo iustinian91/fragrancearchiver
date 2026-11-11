@@ -2,8 +2,12 @@ import json
 import os
 import sqlite3
 
+from archiver import paths
 
-def export_to_json(db_path='perfumes.sqlite', json_path='perfumes.json'):
+
+def export_to_json(db_path=None, json_path=None):
+    db_path = db_path or paths.database_file('perfumes.sqlite')
+    json_path = paths.ensure_parent(json_path or paths.export_file('perfumes.json'))
     # sqlite3.connect() silently creates an empty file when the path is wrong.
     if not os.path.exists(db_path):
         raise SystemExit(f"Missing {db_path}. Run perfumes_scraper.py first.")
