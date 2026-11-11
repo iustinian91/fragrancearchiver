@@ -29,7 +29,7 @@ BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once i
 BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
 BOX_APPEAR_WAIT_MS = 700     # after the last known box, how long to wait (per step) for another to be created
 BOX_LAST_LOOK_MS = 2500      # at the end of the page, how long a late box may still take to appear
-BOX_APPEAR_STEPS = 8         # how many such steps down the page before concluding there are no more boxes
+BOX_APPEAR_STEPS = 24        # how many such steps down the page before concluding there are no more boxes
 SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
 SLOW_SCROLL_WAIT_MS = 600
 HEADLESS = False
@@ -298,7 +298,7 @@ class BrowserClient:
                             break
                     continue
                 extra_steps += 1
-                self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.6))")
+                self.page.evaluate("() => window.scrollBy(0, Math.floor(window.innerHeight * 0.9))")
                 self.page.wait_for_timeout(BOX_APPEAR_WAIT_MS)
                 continue
             box = boxes.nth(index)
