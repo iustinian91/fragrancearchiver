@@ -205,7 +205,7 @@ under `failures/` so selectors can be fixed from the real HTML. Exit status: 0 a
 1 a check failed, 2 blocked. `python tests/test_smoke.py` tests the comparison logic offline.
 Once the curated pages pass, `python smoke_test.py --random 10` tests 10 pages picked at random from `perfumes_manifest.txt` (it prints the seed; `--seed N` repeats the same sample). A random page that fails is a new case: add it to `smoke_urls.txt`.
 After a failed run, `python smoke_test.py --only-failed smoke_run_<time>` re-tests just the perfume pages that failed there (12 pages instead of the whole sample, and no manifest or notes crawl); `--urls FILE` does the same for a list of your own.
-`python tests/test_robustness.py` checks that image downloads are atomic and validated (a 404 image is skipped, not fatal), that blank pages are refused before a URL is marked complete, and that a failed `app.db` build keeps the previous file.
+`python tests/test_failure_handling.py` checks that things fail safely: image downloads are atomic and validated (a 404 image is skipped, not fatal), blank pages are refused and pages missing vote cards are skipped and kept for diagnosis, a Cloudflare page that clears itself is waited out, and a failed `app.db` build keeps the previous file.
 
 ## Pipeline
 

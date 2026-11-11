@@ -1,4 +1,4 @@
-"""Offline checks: image downloads, page validation and the app.db build fail safely."""
+"""Offline checks that things fail safely: bad images, blank or incomplete pages, challenge pages, a failed app.db build."""
 import os
 import sqlite3
 import sys
