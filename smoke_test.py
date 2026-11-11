@@ -39,6 +39,7 @@ sys.path.insert(0, str(REPO))
 import smoke_oracle as so  # noqa: E402
 import browser_client  # noqa: E402
 from browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
+from urls import canonical_url  # noqa: E402
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
 BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.IGNORECASE)
@@ -318,6 +319,12 @@ def stage_perfume_scrape(report, args, workdir, crawl_urls):
 
     report.add(stage, "", "progress ledger matches the manifest", PASS if sorted(progress) == sorted(sample) else FAIL,
                "{} marked complete for {} URLs".format(len(progress), len(sample)))
+    conn = sqlite3.connect("perfumes.sqlite")
+    stored = sorted(conn.execute("SELECT url, page_id FROM perfumes"))
+    conn.close()
+    wanted = sorted((canonical_url(u), url_id(u)) for u in sample)
+    report.add(stage, "", "each record stores its page URL and id", PASS if stored == wanted else FAIL,
+               "{} rows; first mismatch: {}".format(len(stored), next((s for s in stored if s not in wanted), "none")))
     db_checks(report, stage, "perfumes.sqlite", sample, records, lambda r: (r["perfume"] or {}).get("image"))
     idempotence(report, stage, ps.main, ["--db", "perfumes.sqlite"], "perfumes.sqlite", "perfumes", workdir, manifest, sample)
 

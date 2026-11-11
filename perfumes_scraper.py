@@ -442,6 +442,7 @@ def main(argv=None):
         if not perfume_urls:
             raise FileNotFoundError("perfumes_manifest.txt is missing or empty; run perfumes_extract_manifest.py")
         db.migrate_legacy_progress(perfume_urls)
+        db.backfill_urls(perfume_urls)
         completed = db.completed_urls()
     except (OSError, ValueError, RuntimeError) as exc:
         print("Could not prepare perfume scrape: {}".format(exc))

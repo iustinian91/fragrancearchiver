@@ -22,7 +22,7 @@ FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gende
 
 
 COLUMNS = ("brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-           "gender", "when_to_wear", "perfumers")
+           "gender", "when_to_wear", "perfumers", "url", "page_id")
 
 
 def load(db):
@@ -61,6 +61,9 @@ def present(value):
 
 
 def page_id(row):
+    """The page's id: stored with the row, else the one in its bottle image's file name."""
+    if row[11]:
+        return str(row[11])
     match = IMAGE_ID.match(info(row).get("image") or "")
     return match.group(1) if match else None
 
@@ -95,8 +98,9 @@ def main():
     dupes = sum(n - 1 for n in ids.values() if n > 1)
     no_id = sum(1 for r in rows if not page_id(r))
     url_ids = {m.group(1) for m in map(PAGE_ID.search, urls) if m}
-    print("Duplicate pages: {}   Rows without an image id: {}   Manifest ids with no row: {}".format(
-        dupes, no_id, len(url_ids - set(ids))))
+    no_url = sum(1 for r in rows if not r[10])
+    print("Duplicate pages: {}   Rows without a page id: {}   Rows without a URL: {}   Manifest ids with no row: {}".format(
+        dupes, no_id, no_url, len(url_ids - set(ids))))
     problems += bool(dupes)
 
     # 2. Field coverage

@@ -12,21 +12,27 @@ class _TableDB:
 
     table = None
     columns = ()
+    # Every row also records the page it came from; `url` is unique, so scraping a page again
+    # updates its row instead of adding a second one. (SQL NULL for rows of an older crawl.)
+    source_columns = ("url", "page_id")
 
     def __init__(self, db_name):
         self.db_name = db_name
         self.conn = sqlite3.connect(db_name)
 
     def setup(self):
-        definitions = ", ".join("{} TEXT".format(column) for column in self.columns)
+        every_column = self.columns + self.source_columns
+        definitions = ", ".join("{} TEXT".format(column) for column in every_column)
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS {} ({})".format(self.table, definitions)
         )
         # A database made by an older version lacks the newer columns; add them in place.
         have = {row[1] for row in self.conn.execute("PRAGMA table_info({})".format(self.table))}
-        for column in self.columns:
+        for column in every_column:
             if column not in have:
                 self.conn.execute("ALTER TABLE {} ADD COLUMN {} TEXT".format(self.table, column))
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_{0}_url ON {0}(url)".format(self.table))
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scrape_progress (
@@ -58,30 +64,24 @@ class _TableDB:
                 "SELECT ?, completed_at FROM scrape_progress WHERE url = ?", (canonical_url(url), url))
             self.conn.execute("DELETE FROM scrape_progress WHERE url = ?", (url,))
 
-    def add_record(self, args):
-        """Insert a data row (legacy helper; new scrapers should use add_record_for_url)."""
-        self.conn.execute(
-            "INSERT INTO {} ({}) VALUES ({})".format(
-                self.table, ", ".join(self.columns), ", ".join("?" * len(self.columns))
-            ),
-            args,
-        )
-        self.conn.commit()
-
     def add_record_for_url(self, url, args):
-        """Atomically save a scraped record and mark its source URL complete."""
+        """Atomically save a scraped record with its page URL and id, and mark the URL complete.
+        A page scraped again replaces its earlier row."""
+        url = canonical_url(url)
+        every_column = self.columns + self.source_columns
         with self.conn:
             self.conn.execute(
-                "INSERT INTO {} ({}) VALUES ({})".format(
-                    self.table,
-                    ", ".join(self.columns),
-                    ", ".join("?" * len(self.columns)),
+                "INSERT INTO {table} ({columns}) VALUES ({marks}) ON CONFLICT(url) DO UPDATE SET {updates}".format(
+                    table=self.table,
+                    columns=", ".join(every_column),
+                    marks=", ".join("?" * len(every_column)),
+                    updates=", ".join("{0}=excluded.{0}".format(c) for c in every_column),
                 ),
-                args,
+                tuple(args) + (url, _page_id(url)),
             )
             self.conn.execute(
                 "INSERT OR REPLACE INTO scrape_progress (url) VALUES (?)",
-                (canonical_url(url),),
+                (url,),
             )
 
     def completed_urls(self):
@@ -129,6 +129,12 @@ class _TableDB:
                 "INSERT OR IGNORE INTO scrape_progress (url) VALUES (?)",
                 ((url,) for url in legacy_urls),
             )
+            # The older crawl went through the manifest in order, so the k-th row is the k-th URL.
+            rowids = [r[0] for r in self.conn.execute(
+                "SELECT rowid FROM {} WHERE url IS NULL ORDER BY rowid".format(self.table))]
+            for rowid, url in zip(rowids, legacy_urls):
+                self.conn.execute("UPDATE {} SET url = ?, page_id = ? WHERE rowid = ?".format(self.table),
+                                  (url, _page_id(url), rowid))
         print(
             "Migrated {} legacy records to URL-based progress using the first {} "
             "manifest entries. Verify that the manifest order has not changed.".format(
@@ -193,6 +199,32 @@ class PerfumesDBHelper(_TableDB):
         )
         self._warn_legacy_rows()
         return len(done)
+
+    def backfill_urls(self, manifest_urls):
+        """Give rows that have no URL yet (an older crawl) the URL of the page whose id their bottle
+        image carries (o.<id>.jpg). Rows with no image, or whose id is not in the manifest, stay
+        without one."""
+        by_id = {}
+        for url in manifest_urls:
+            by_id.setdefault(_page_id(url), url)
+        filled = 0
+        for rowid, raw in self.conn.execute(
+                "SELECT rowid, perfume FROM perfumes WHERE url IS NULL").fetchall():
+            try:
+                image = json.loads(raw).get("image")
+            except (ValueError, AttributeError, TypeError):
+                continue
+            match = re.match(r"o\.(\d+)\.", image or "")
+            url = by_id.get(match.group(1)) if match else None
+            if url:
+                try:
+                    with self.conn:
+                        self.conn.execute("UPDATE perfumes SET url = ?, page_id = ? WHERE rowid = ?",
+                                          (url, _page_id(url), rowid))
+                    filled += 1
+                except sqlite3.IntegrityError:
+                    pass   # two rows carry the same image id; the second is left without a URL
+        return filled
 
     def _warn_legacy_rows(self):
         """Rows from an older crawl have no gender, when-to-wear or perfumers (SQL NULL, where a

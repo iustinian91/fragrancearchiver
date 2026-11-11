@@ -121,3 +121,39 @@ with _tf.TemporaryDirectory() as tmp:
     assert helper.completed_urls() == {"https://www.fragrantica.com/perfume/A/B-1.html"}
     helper.close()
 print("older-crawl rows are reported OK")
+
+
+# ---- every row knows its page: url + page id, one row per page, ids in clean and app.db ----
+U1 = "https://www.fragrantica.com/perfume/Tom-Ford/Black-Orchid-1018.html"
+U2 = "https://www.fragrantica.com/perfume/Creed/Aventus-9828.html"
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    db = db_helper.PerfumesDBHelper("perfumes.sqlite")
+    db.setup()
+    db.add_record_for_url(U1.replace("https://", "http://"), record)      # an http URL is stored as https
+    db.add_record_for_url(U2, empty)
+    db.add_record_for_url(U1, record[:2] + ("2007",) + record[3:])        # the same page again: replaced
+    assert db.number_of_records() == 2, "scraping a page again must not add a second row"
+    assert db.conn.execute("SELECT url, page_id, launch_year FROM perfumes WHERE page_id='1018'").fetchall() == [(U1, "1018", "2007")]
+    assert db.completed_urls() == {U1, U2}
+
+    # rows of an older crawl (no url) get one from the id in their bottle image
+    db.conn.execute("INSERT INTO perfumes (brand, perfume) VALUES ('Old', ?)", (json.dumps({"image": "o.555.jpg"}),))
+    db.conn.execute("INSERT INTO perfumes (brand, perfume) VALUES ('NoImage', '{}')")
+    db.conn.commit()
+    other = "https://www.fragrantica.com/perfume/Old/Thing-555.html"
+    assert db.backfill_urls([U1, other]) == 1
+    assert db.conn.execute("SELECT url, page_id FROM perfumes WHERE brand='Old'").fetchone() == (other, "555")
+    assert db.conn.execute("SELECT url FROM perfumes WHERE brand='NoImage'").fetchone() == (None,)
+    db.close()
+
+    export.export_to_json()
+    clean.clean(report=False)
+    with open("perfumes_clean.json", encoding="utf-8") as clean_file:
+        rows = {x["name"]: x for x in json.load(clean_file)}
+    assert rows["Black Orchid"]["id"] == "1018" and rows["Black Orchid"]["url"] == U1
+    build_app_db.main()
+    conn = sqlite3.connect("app.db")
+    assert conn.execute("SELECT id, source_url FROM perfumes WHERE name='Black Orchid'").fetchone() == ("1018", U1)
+    conn.close()
+print("rows carry their url and page id; a page scraped twice has one row; clean and app.db use the id OK")

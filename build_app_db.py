@@ -39,7 +39,8 @@ def main():
       image TEXT,                  -- optional image/filename/url
       year INTEGER,
       slug TEXT NOT NULL UNIQUE,
-      popularity INTEGER DEFAULT 0
+      popularity INTEGER DEFAULT 0,
+      source_url TEXT              -- the Fragrantica page the row was scraped from
     );
 
     CREATE TABLE notes(
@@ -104,7 +105,8 @@ def main():
         image = p.get("image")
         # Explicit rowid: perfume_fts is contentless, so search hits join back via perfume_fts.rowid = perfumes.rowid
         perf_rows.append((
-            rowid, p["id"], p["brand"], p["name"], image, p.get("year"), p["slug"], p.get("popularity", 0)
+            rowid, p["id"], p["brand"], p["name"], image, p.get("year"), p["slug"], p.get("popularity", 0),
+            p.get("url")
         ))
 
         all_notes = []
@@ -131,7 +133,7 @@ def main():
 
     with conn:
         cur.executemany(
-            "INSERT INTO perfumes(rowid,id,brand,name,image,year,slug,popularity) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO perfumes(rowid,id,brand,name,image,year,slug,popularity,source_url) VALUES (?,?,?,?,?,?,?,?,?)",
             perf_rows
         )
         cur.executemany(

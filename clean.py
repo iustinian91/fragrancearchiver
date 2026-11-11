@@ -271,11 +271,15 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
         popularity = sum(charts["longevity"]["votes"].values()) if "longevity" in charts else 0
 
         # build_app_db.py needs unique ids and slugs; disambiguate repeated rows deterministically
-        dup = 0
-        pid = _stable_id(brand, name, year)
-        while pid in seen_ids:
-            dup += 1
-            pid = _stable_id(brand, name, year, dup)
+        # The Fragrantica page id is the perfume's id: it does not change when a name is corrected.
+        # Rows without one (an older crawl, no image) get a hash of brand, name and year instead.
+        pid = str(p.get("page_id") or "").strip()
+        if not pid or pid in seen_ids:
+            dup = 0
+            pid = _stable_id(brand, name, year)
+            while pid in seen_ids:
+                dup += 1
+                pid = _stable_id(brand, name, year, dup)
         seen_ids.add(pid)
         slug = _slugify(brand, name)
         if slug in seen_slugs:
@@ -289,6 +293,7 @@ def clean(input_file="perfumes.json", output_file="perfumes_clean.json", report=
             "brand": brand,
             "year": year,
             "image": _best_image(p),
+            "url": p.get("url") or None,    # the Fragrantica page it came from
             "main_accords": main_accords,
             "perfumers": _parse_perfumers(p.get("perfumers")),   # [{name, slug}]
             "notes": notes,                 # {top, middle, base, general}
