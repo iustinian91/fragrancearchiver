@@ -6,6 +6,8 @@ import re
 import unicodedata
 from pathlib import Path
 
+from lxml import html
+
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import PerfumesDBHelper
 
@@ -291,6 +293,22 @@ def check_page(tree, url):
         raise ValueError("{} does not look like a perfume page (no title or heading)".format(url))
 
 
+DEBUG_DIR = None   # set (e.g. by the smoke test) to keep the page exactly as the scraper read it
+
+
+def card_summary(tree):
+    """One line on the vote cards present when the page was read: label, rows, and whether the
+    rows hold numbers. Shows whether a missing chart was never drawn or never parsed."""
+    parts = []
+    for card in tree.xpath(PERF_CARD):
+        label = " ".join((card.xpath(".//span[contains(@class,'uppercase')]/text()") or ["?"])[0].split())
+        rows = card.xpath(".//*[contains(@class,'space-y-2')]")
+        numbers = bool(rows) and any(ch.isdigit() for ch in rows[0].text_content())
+        parts.append("{}({} rows{})".format(label, len(rows[0].xpath("./*")) if rows else 0,
+                                           ", numbers" if numbers else ", EMPTY"))
+    return "; ".join(parts) or "no vote cards"
+
+
 def scrape_perfume(client, url):
     """Fetch and parse one perfume page. Returns (perfume dict, record tuple)."""
     match = PERFUME_URL.search(url)
@@ -331,6 +349,13 @@ def scrape_perfume(client, url):
     notes = page_notes(tree)
 
     charts = page_charts(tree)
+    missing = [name for name in ("longevity", "sillage", "gender") if charts[name] is None]
+    if missing:
+        print("  [votes] {}: no {} stored; cards when read: {}".format(
+            url.rsplit("/", 1)[-1], "/".join(missing), card_summary(tree)), flush=True)
+        if DEBUG_DIR:
+            DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+            (DEBUG_DIR / url.rsplit("/", 1)[-1]).write_bytes(html.tostring(tree))
 
     record = (
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),

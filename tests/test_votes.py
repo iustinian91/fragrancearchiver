@@ -72,3 +72,12 @@ client._wait_for_lazy(".tw-perf-card", stop_at="Reviews")
 assert client.page.scrolls == bc.MAX_LAZY_STEPS                  # still bounded without it
 print("scroll stops at the Reviews heading OK")
 print("vote extraction OK")
+
+# the line the scraper prints when a chart is missing says what the cards held
+empty_cards = html.fromstring(
+    "<html><body><div class='tw-perf-card'><span class='uppercase'>GENDER</span>"
+    "<div class='space-y-2'><div>female</div></div></div></body></html>")
+summary = ps.card_summary(empty_cards)
+assert "GENDER(1 rows, EMPTY)" in summary, summary
+assert ps.card_summary(html.fromstring("<html><body></body></html>")) == "no vote cards"
+print("card_summary describes empty and missing cards OK")

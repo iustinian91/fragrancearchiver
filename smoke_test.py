@@ -272,6 +272,7 @@ def stage_perfume_scrape(report, args, workdir, crawl_urls):
     import clean
     import export
     import perfumes_scraper as ps
+    ps.DEBUG_DIR = workdir / "scraper_pages"   # pages a chart was missing from, as the scraper read them
     stage = "perfume pages"
     if args.only:
         sample = list(args.only)
