@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
+import browser_client
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import NotesDBHelper
 
@@ -53,7 +54,13 @@ def main(argv=None):
     parser.add_argument(
         "--limit", type=int, help="scrape at most this many pages (for trial runs)"
     )
+    parser.add_argument(
+        "--block-ads", action="store_true", dest="block_ads",
+        help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
+             "(ads and trackers); prints what was blocked when the browser closes",
+    )
     args = parser.parse_args(argv)
+    browser_client.BLOCK_ADS = browser_client.BLOCK_ADS or args.block_ads   # smoke_test may have set it
 
     db = NotesDBHelper(args.db)
     db.setup()

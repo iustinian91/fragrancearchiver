@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lxml import html
 
+import browser_client
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import PerfumesDBHelper
 
@@ -423,7 +424,13 @@ def main(argv=None):
         "--limit", type=int,
         help="scrape at most this many pages; try it with a scratch --db before a full crawl",
     )
+    parser.add_argument(
+        "--block-ads", action="store_true", dest="block_ads",
+        help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
+             "(ads and trackers); prints what was blocked when the browser closes",
+    )
     args = parser.parse_args(argv)
+    browser_client.BLOCK_ADS = browser_client.BLOCK_ADS or args.block_ads   # smoke_test may have set it
 
     db = PerfumesDBHelper(args.db)
     db.setup()

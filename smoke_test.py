@@ -37,6 +37,7 @@ REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
 import smoke_oracle as so  # noqa: E402
+import browser_client  # noqa: E402
 from browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
@@ -466,8 +467,11 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, help="seed for --random (printed, so a sample can be repeated)")
     parser.add_argument("--urls", metavar="FILE",
                         help="re-test only the perfume page URLs listed in FILE (one per line)")
+    parser.add_argument("--block-ads", action="store_true", dest="block_ads",
+                        help="run the scrapers and the oracle with ad blocking on (compare with a run without it)")
     parser.add_argument("--workdir", help="new folder for this run (default smoke_run_<time>)")
     args = parser.parse_args(argv)
+    browser_client.BLOCK_ADS = args.block_ads
     args.only = None
     if args.only_failed:
         args.only = failed_urls(args.only_failed)

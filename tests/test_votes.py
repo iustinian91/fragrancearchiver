@@ -117,3 +117,34 @@ empty = clean._chart({"winter": "0", "spring": "0", "summer": "0", "fall": "0", 
 assert empty and set(empty["share"].values()) == {0.0} and set(empty["votes"].values()) == {0}, empty
 assert clean._chart(None, {k: k for k in clean.WHEN_KEYS}, clean.WHEN_KEYS) is None, "missing chart stays None"
 print("charts with no votes keep zeros OK")
+
+# ---- ad blocking: only the site, its images and Cloudflare may be reached ----
+for url in ("https://www.fragrantica.com/perfume/Dior/Sauvage-31861.html", "https://fragrantica.com/x",
+            "https://c.fimgs.net/mdimg/perfume/o.1.jpg", "https://challenges.cloudflare.com/turnstile/v0/api.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/x.js", "data:image/png;base64,AAAA", "blob:https://www.fragrantica.com/1"):
+    assert bc.allowed_url(url), url
+for url in ("https://securepubads.g.doubleclick.net/tag.js", "https://ads.pubmatic.com/x", "https://a.pub.network/core.js",
+            "https://www.googletagmanager.com/gtm.js", "https://fragrantica.com.evil.com/x", "https://notfimgs.net/x",
+            "https://example.com/?u=fragrantica.com"):
+    assert not bc.allowed_url(url), url
+
+
+class FakeRoute:
+    def __init__(self, url):
+        self.request, self.done = types.SimpleNamespace(url=url), None
+
+    def continue_(self):
+        self.done = "continue"
+
+    def abort(self, reason):
+        self.done = "abort " + reason
+
+
+client = bc.BrowserClient(block_ads=True)
+routes = [FakeRoute(u) for u in ("https://www.fragrantica.com/a", "https://ads.pubmatic.com/x", "https://ads.pubmatic.com/y")]
+for r in routes:
+    client._on_request(r)
+assert [r.done for r in routes] == ["continue", "abort blockedbyclient", "abort blockedbyclient"]
+assert client.requests_blocked == {"ads.pubmatic.com": 2} and "2 blocked" in client.block_summary()
+assert bc.BrowserClient(block_ads=False).block_summary() == "" and bc.BrowserClient().block_ads is False
+print("ad blocking allowlist OK")

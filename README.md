@@ -166,6 +166,17 @@ to the `perfume_votes` table (`perfume_id, chart, option, position, votes, share
 `popularity` is the number of longevity votes. `python tests/test_pipeline.py` runs a saved
 page through scrape, export, clean and the app database.
 
+### Blocking ads (optional)
+
+`--block-ads` (on `perfumes_scraper.py`, `notes_scraper.py` and `smoke_test.py`) aborts every
+request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare, so the ~45 ad,
+tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HOSTS` in
+`browser_client.py`. When the browser closes it prints how many requests were allowed and
+blocked and the busiest blocked hosts; if vote charts come back empty with it on, check that
+list for a host the page needs and add it. It is off by default. To see whether it helps,
+run the smoke test with and without it. It does not remove the site's own sign-up popup
+(`#registration-nudge-overlay`); the scroll unlock handles that.
+
 ### Rebuilding the database
 
 Progress is tracked per URL in the `scrape_progress` table of `perfumes.sqlite`, so

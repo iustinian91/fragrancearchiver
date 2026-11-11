@@ -2,6 +2,7 @@
 
 import os
 import random
+from collections import Counter
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -33,6 +34,28 @@ BOX_APPEAR_STEPS = 24        # how many such steps down the page before concludi
 SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
 SLOW_SCROLL_WAIT_MS = 600
 HEADLESS = False
+
+# Ad blocking (--block-ads): every request to a host that is not listed here is aborted. The
+# pages carry about 45 ad, tracker and cookie-sync hosts the scraper never reads. Cloudflare is
+# allowed so its challenge can run, and the site's own hosts so the vote charts can load.
+BLOCK_ADS = False
+ALLOWED_HOSTS = (
+    "fragrantica.com",           # the site, and its API for the vote charts
+    "fimgs.net",                 # perfume and note images
+    "cloudflare.com",            # the challenge page (challenges.cloudflare.com, cdnjs...)
+    "cloudflareinsights.com",
+)
+LOCAL_SCHEMES = ("data", "blob", "about", "chrome", "chrome-extension", "devtools")
+
+
+def allowed_url(url, allowed_hosts=ALLOWED_HOSTS):
+    """True if a request to `url` may go out while ad blocking is on: a host on the allowlist or
+    one of its subdomains, or something that never leaves the browser (data:, blob:)."""
+    parts = urlsplit(url)
+    if parts.scheme in LOCAL_SCHEMES:
+        return True
+    host = (parts.hostname or "").lower().rstrip(".")
+    return any(host == allowed or host.endswith("." + allowed) for allowed in allowed_hosts)
 
 
 class ScrollIncompleteError(RuntimeError):
@@ -120,9 +143,14 @@ def matching_urls(tree, base_url, pattern):
 class BrowserClient:
     """Own a visible Patchright Chromium browser and its page/context."""
 
-    def __init__(self, headless=HEADLESS, timeout_ms=REQUEST_TIMEOUT_MS):
+    def __init__(self, headless=HEADLESS, timeout_ms=REQUEST_TIMEOUT_MS, block_ads=None,
+                 allowed_hosts=None):
         self.headless = headless
         self.timeout_ms = timeout_ms
+        self.block_ads = BLOCK_ADS if block_ads is None else block_ads
+        self.allowed_hosts = ALLOWED_HOSTS if allowed_hosts is None else tuple(allowed_hosts)
+        self.requests_allowed = Counter()    # host -> requests let through (with ad blocking on)
+        self.requests_blocked = Counter()    # host -> requests aborted
         self._playwright = None
         self.browser = None
         self.context = None
@@ -133,6 +161,8 @@ class BrowserClient:
         try:
             self.browser = self._playwright.chromium.launch(headless=self.headless)
             self.context = self.browser.new_context()
+            if self.block_ads:
+                self.context.route("**/*", self._on_request)
             self.page = self.context.new_page()
             self.page.set_default_timeout(self.timeout_ms)
         except BaseException:
@@ -141,7 +171,30 @@ class BrowserClient:
             raise
         return self
 
+    def _on_request(self, route):
+        """Let a request through if its host is allowed, otherwise abort it."""
+        url = route.request.url
+        host = (urlsplit(url).hostname or urlsplit(url).scheme).lower()
+        if allowed_url(url, self.allowed_hosts):
+            self.requests_allowed[host] += 1
+            route.continue_()
+        else:
+            self.requests_blocked[host] += 1
+            route.abort("blockedbyclient")
+
+    def block_summary(self):
+        """One line on what ad blocking did, with the busiest blocked hosts; "" if it was off."""
+        if not self.block_ads:
+            return ""
+        blocked = sum(self.requests_blocked.values())
+        top = ", ".join("{} x{}".format(h, n) for h, n in self.requests_blocked.most_common(8))
+        return "Ad blocking: {} requests allowed, {} blocked ({} hosts). Busiest blocked: {}".format(
+            sum(self.requests_allowed.values()), blocked, len(self.requests_blocked), top or "none")
+
     def __exit__(self, exc_type, exc_value, traceback):
+        summary = self.block_summary()
+        if summary:
+            print(summary)
         try:
             if self.browser is not None:
                 self.browser.close()
