@@ -173,7 +173,9 @@ request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare, so t
 tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HOSTS` in
 `browser_client.py`. When the browser closes it prints how many requests were allowed and
 blocked and the busiest blocked hosts; if vote charts come back empty with it on, check that
-list for a host the page needs and add it. It is off by default. To see whether it helps,
+list for a host the page needs and add it. It also drops font and video requests to the allowed hosts, which the scraper never reads
+(page images stay, because without them the page is shorter and the lazy vote cards are reached
+differently). It is off by default. To see whether it helps,
 run the smoke test with and without it. It does not remove the site's own sign-up popup
 (`#registration-nudge-overlay`); the scroll unlock handles that.
 
@@ -245,3 +247,13 @@ changed versus a previous crawl. Run it before the export/clean/build steps.
 `check_db.py` prints sample rows from `perfumes.sqlite` for a quick sanity
 check. `db_helper.py` holds the SQLite helpers and URL completion ledger used
 by both scrapers.
+
+### Being gentle with the site
+
+- **Slowdown:** a rate limit (HTTP 429) or a challenge doubles every pause before a request, up to
+  8 times the normal length; 50 requests in a row without one halve it again.
+- **Stopping:** three blocks in a row end the run ("the site blocked 3 requests in a row"). Progress
+  is saved; wait an hour or more and rerun.
+- **Browser profile:** the crawlers keep the browser's cookies in `browser_profile/` between runs, so
+  a challenge cleared once stays cleared. `--profile DIR` picks another folder and `--no-profile`
+  starts fresh. The smoke test always starts fresh.

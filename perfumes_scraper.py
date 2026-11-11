@@ -424,13 +424,9 @@ def main(argv=None):
         "--limit", type=int,
         help="scrape at most this many pages; try it with a scratch --db before a full crawl",
     )
-    parser.add_argument(
-        "--block-ads", action="store_true", dest="block_ads",
-        help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
-             "(ads and trackers); prints what was blocked when the browser closes",
-    )
+    browser_client.add_browser_arguments(parser)
     args = parser.parse_args(argv)
-    browser_client.BLOCK_ADS = browser_client.BLOCK_ADS or args.block_ads   # smoke_test may have set it
+    browser_client.apply_browser_arguments(args)
 
     db = PerfumesDBHelper(args.db)
     db.setup()

@@ -201,7 +201,7 @@ def stage_perfume_manifest(report, args, workdir):
 def stage_notes_manifest(report, args, workdir):
     import notes_extract_manifest as nem
     stage = "notes URLs"
-    code, _ = run_main(lambda argv: nem.main(), [])
+    code, _ = run_main(nem.main, [])
     manifest = workdir / "notes_manifest.txt"
     report.add(stage, "", "manifest written", PASS if code == 0 and manifest.exists() else FAIL, "exit code {}".format(code))
     if code or not manifest.exists():
@@ -472,6 +472,7 @@ def main(argv=None):
     parser.add_argument("--workdir", help="new folder for this run (default smoke_run_<time>)")
     args = parser.parse_args(argv)
     browser_client.BLOCK_ADS = args.block_ads
+    browser_client.PROFILE_DIR = ""     # every smoke run starts with a fresh browser
     args.only = None
     if args.only_failed:
         args.only = failed_urls(args.only_failed)

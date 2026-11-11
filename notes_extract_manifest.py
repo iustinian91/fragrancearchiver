@@ -1,9 +1,11 @@
 """Extract the Fragrantica note manifest and replace it atomically."""
 
+import argparse
 import re
 from pathlib import Path
 from urllib.parse import urljoin
 
+import browser_client
 from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, matching_urls
 
 OUTPUT_PATH = Path("notes_manifest.txt")
@@ -11,7 +13,10 @@ TEMP_OUTPUT_PATH = Path("notes_manifest.txt.tmp")
 NOTE_PATH = re.compile(r"/notes/[^/]+-\d+\.html?$", re.IGNORECASE)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    browser_client.add_browser_arguments(parser)
+    browser_client.apply_browser_arguments(parser.parse_args(argv))
     # Fetch and validate the page before touching the existing manifest.
     try:
         with BrowserClient() as client:

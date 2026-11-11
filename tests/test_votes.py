@@ -146,5 +146,14 @@ for r in routes:
     client._on_request(r)
 assert [r.done for r in routes] == ["continue", "abort blockedbyclient", "abort blockedbyclient"]
 assert client.requests_blocked == {"ads.pubmatic.com": 2} and "2 blocked" in client.block_summary()
+font = FakeRoute("https://www.fragrantica.com/font.woff2")
+font.request.resource_type = "font"
+client._on_request(font)
+assert font.done == "abort blockedbyclient" and client.requests_skipped == {"font": 1}
+assert "skipped on allowed hosts: font x1" in client.block_summary()
+page = FakeRoute("https://www.fragrantica.com/p.html")
+page.request.resource_type = "document"
+client._on_request(page)
+assert page.done == "continue"
 assert bc.BrowserClient(block_ads=False).block_summary() == "" and bc.BrowserClient().block_ads is False
 print("ad blocking allowlist OK")

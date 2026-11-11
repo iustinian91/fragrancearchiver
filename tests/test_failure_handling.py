@@ -196,3 +196,93 @@ with tempfile.TemporaryDirectory() as _tmp:
     finally:
         os.chdir(_old)
 print("pages with missing vote cards are skipped, listed and retried later OK")
+
+# ---- politeness: slow down after a block, stop after three in a row ----
+import types as _types  # noqa: E402
+
+_slept = []
+_real_sleep, bc.sleep = bc.sleep, lambda s: _slept.append(s)
+_real_uniform, bc.random.uniform = bc.random.uniform, lambda low, high: low   # earlier tests zero the delays
+_real_uniform, bc.random.uniform = bc.random.uniform, lambda a, b: a   # the file stubs it to 0
+
+
+def _fresh():
+    c = bc.BrowserClient.__new__(bc.BrowserClient)
+    c.slowdown, c.block_streak, c.clean_streak = 1.0, 0, 0
+    return c
+
+
+try:
+    c = _fresh()
+    c._pace_request((4.0, 4.0))
+    c._note_block("test")
+    c._pace_request((4.0, 4.0))
+    c._note_block("test")
+    c._pace_request((4.0, 4.0))
+    assert _slept == [4.0, 8.0, 16.0], _slept
+    c.block_streak = 0
+    c = _fresh()
+    c.slowdown = 100.0
+    c._note_block("x")
+    assert c.slowdown == bc.MAX_SLOWDOWN, "the slowdown has a ceiling"
+
+    # three blocks in a row stop the run; a fetch that goes through ends the streak
+    c = _fresh()
+    c._note_block("a")
+    c._note_block("b")
+    c._note_ok()
+    c._note_block("c")
+    c._note_block("d")
+    try:
+        c._note_block("e")
+        raise AssertionError("three in a row must stop")
+    except bc.TooManyBlocksError as exc:
+        assert "3 requests in a row" in str(exc) and "rerun" in str(exc)
+    assert issubclass(bc.TooManyBlocksError, RuntimeError) and issubclass(bc.TooManyBlocksError, bc.FETCH_ERRORS)
+
+    # a long clean stretch halves the slowdown, one step at a time
+    c = _fresh()
+    c.slowdown = 4.0
+    for _ in range(bc.CLEAN_FETCHES_TO_SPEED_UP - 1):
+        c._note_ok()
+    assert c.slowdown == 4.0
+    c._note_ok()
+    assert c.slowdown == 2.0 and c.clean_streak == 0
+
+    # fetch_tree: repeated 429s end with TooManyBlocksError, not five retries
+    class Page429:
+        url = "https://www.fragrantica.com/x"
+
+        def goto(self, *a, **k):
+            return _types.SimpleNamespace(status=429, headers={})
+
+    c = _fresh()
+    c.page, c.timeout_ms = Page429(), 1000
+    c._rate_limit_wait = lambda *a, **k: None
+    try:
+        c.fetch_tree("https://www.fragrantica.com/x")
+        raise AssertionError("expected a stop")
+    except bc.TooManyBlocksError:
+        pass
+    assert c.block_streak == bc.MAX_CONSECUTIVE_BLOCKS and c.slowdown == 8.0
+finally:
+    bc.sleep, bc.random.uniform = _real_sleep, _real_uniform
+
+# the profile options: a caller's earlier choice wins, otherwise --profile / --no-profile decide
+import argparse  # noqa: E402
+_p = argparse.ArgumentParser()
+bc.add_browser_arguments(_p)
+_old = bc.PROFILE_DIR, bc.BLOCK_ADS
+try:
+    bc.PROFILE_DIR = None
+    bc.apply_browser_arguments(_p.parse_args([]))
+    assert bc.PROFILE_DIR == "browser_profile"
+    bc.PROFILE_DIR = None
+    bc.apply_browser_arguments(_p.parse_args(["--no-profile"]))
+    assert bc.PROFILE_DIR == ""
+    bc.PROFILE_DIR = ""
+    bc.apply_browser_arguments(_p.parse_args([]))
+    assert bc.PROFILE_DIR == "", "the smoke test's fresh browser is kept"
+finally:
+    bc.PROFILE_DIR, bc.BLOCK_ADS = _old
+print("slowdown, stop after three blocks, and profile options OK")

@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin
 
+import browser_client
 from browser_client import (
     BASE_URL,
     FETCH_ERRORS,
@@ -134,7 +135,9 @@ def main(argv=None):
         "--designers", type=int, metavar="N",
         help="crawl only the first N designers of each country (for trial runs)",
     )
+    browser_client.add_browser_arguments(parser)
     args = parser.parse_args(argv)
+    browser_client.apply_browser_arguments(args)
     countries = [args.country] if args.country else COUNTRIES
 
     try:

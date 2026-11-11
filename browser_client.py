@@ -20,6 +20,10 @@ REQUEST_DELAYS = (2.5, 10.0)
 IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no need to wait as long
 CHALLENGE_WAIT_SECONDS = 20   # how long a Cloudflare "checking your browser" page may take to clear itself
 MAX_RATE_LIMIT_RETRIES = 5
+MAX_CONSECUTIVE_BLOCKS = 3    # a 429 or a challenge this many times in a row ends the run
+MAX_SLOWDOWN = 8.0            # the delays never grow beyond 8 times their normal length
+CLEAN_FETCHES_TO_SPEED_UP = 50   # blocks-free fetches before the delays are halved again
+PROFILE_DIR = None            # browser profile folder: None = not decided yet, "" = fresh browser each run
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
 SCROLL_STEP_WAIT_MS = 500
@@ -45,6 +49,11 @@ ALLOWED_HOSTS = (
     "cloudflare.com",            # the challenge page (challenges.cloudflare.com, cdnjs...)
     "cloudflareinsights.com",
 )
+# With ad blocking on, these kinds of request are dropped even from allowed hosts: the scraper
+# reads text, and downloads the one picture it keeps itself. Every one is a request the site's
+# servers do not have to answer. (Page images are kept: without them the page is shorter and
+# the lazy vote cards are scrolled into view differently.)
+SKIPPED_RESOURCE_TYPES = ("media", "font")
 LOCAL_SCHEMES = ("data", "blob", "about", "chrome", "chrome-extension", "devtools")
 
 
@@ -60,6 +69,11 @@ def allowed_url(url, allowed_hosts=ALLOWED_HOSTS):
 
 class ScrollIncompleteError(RuntimeError):
     """Raised when a lazy-loaded list is still growing when the scroll limit is reached."""
+
+
+class TooManyBlocksError(RuntimeError):
+    """Raised when the site has answered MAX_CONSECUTIVE_BLOCKS requests in a row with a rate
+    limit (HTTP 429) or a challenge: carrying on would only make things worse."""
 
 
 class CloudflareChallengeError(RuntimeError):
@@ -140,17 +154,52 @@ def matching_urls(tree, base_url, pattern):
     return list(dict.fromkeys(urls))
 
 
+def add_browser_arguments(parser):
+    """The command-line options every crawler shares: ad blocking and the browser profile."""
+    parser.add_argument(
+        "--block-ads", action="store_true", dest="block_ads",
+        help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
+             "(ads and trackers); prints what was blocked when the browser closes")
+    parser.add_argument(
+        "--profile", default="browser_profile", metavar="DIR",
+        help="folder that keeps the browser's cookies between runs, so a challenge that was "
+             "cleared once stays cleared (default %(default)s)")
+    parser.add_argument(
+        "--no-profile", action="store_true", dest="no_profile",
+        help="start every run with a fresh browser instead")
+
+
+def apply_browser_arguments(args):
+    """Turn those options into the module settings BrowserClient reads. Settings a caller made
+    first (the smoke test) are kept."""
+    global BLOCK_ADS, PROFILE_DIR
+    BLOCK_ADS = BLOCK_ADS or args.block_ads
+    if PROFILE_DIR is None:
+        PROFILE_DIR = "" if args.no_profile else args.profile
+
+
 class BrowserClient:
-    """Own a visible Patchright Chromium browser and its page/context."""
+    """Own a visible Patchright Chromium browser and its page/context.
+
+    Politeness: every pause before a request is multiplied by `slowdown`. A rate limit (429) or a
+    challenge doubles it (up to MAX_SLOWDOWN); CLEAN_FETCHES_TO_SPEED_UP fetches without one halve
+    it again. MAX_CONSECUTIVE_BLOCKS in a row raise TooManyBlocksError, and the crawl stops."""
+
+    slowdown = 1.0         # class defaults, so a client made without __init__ (tests) still works
+    block_streak = 0       # blocks in a row, reset by any fetch that went through
+    clean_streak = 0       # fetches since the last block
+    _persistent = False
 
     def __init__(self, headless=HEADLESS, timeout_ms=REQUEST_TIMEOUT_MS, block_ads=None,
-                 allowed_hosts=None):
+                 allowed_hosts=None, profile_dir=None):
+        self.profile_dir = PROFILE_DIR if profile_dir is None else profile_dir
         self.headless = headless
         self.timeout_ms = timeout_ms
         self.block_ads = BLOCK_ADS if block_ads is None else block_ads
         self.allowed_hosts = ALLOWED_HOSTS if allowed_hosts is None else tuple(allowed_hosts)
         self.requests_allowed = Counter()    # host -> requests let through (with ad blocking on)
         self.requests_blocked = Counter()    # host -> requests aborted
+        self.requests_skipped = Counter()    # resource type -> requests dropped on allowed hosts
         self._playwright = None
         self.browser = None
         self.context = None
@@ -159,11 +208,19 @@ class BrowserClient:
     def __enter__(self):
         self._playwright = sync_playwright().start()
         try:
-            self.browser = self._playwright.chromium.launch(headless=self.headless)
-            self.context = self.browser.new_context()
+            if self.profile_dir:
+                # A persistent profile keeps cookies (such as a cleared challenge) between runs.
+                folder = Path(self.profile_dir).resolve()
+                folder.mkdir(parents=True, exist_ok=True)
+                self.context = self._playwright.chromium.launch_persistent_context(
+                    str(folder), headless=self.headless)
+                self._persistent = True
+            else:
+                self.browser = self._playwright.chromium.launch(headless=self.headless)
+                self.context = self.browser.new_context()
             if self.block_ads:
                 self.context.route("**/*", self._on_request)
-            self.page = self.context.new_page()
+            self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
             self.page.set_default_timeout(self.timeout_ms)
         except BaseException:
             # __exit__ is not called when __enter__ fails; don't leak the driver process.
@@ -175,7 +232,11 @@ class BrowserClient:
         """Let a request through if its host is allowed, otherwise abort it."""
         url = route.request.url
         host = (urlsplit(url).hostname or urlsplit(url).scheme).lower()
-        if allowed_url(url, self.allowed_hosts):
+        kind = getattr(route.request, "resource_type", "")
+        if allowed_url(url, self.allowed_hosts) and kind in SKIPPED_RESOURCE_TYPES:
+            self.requests_skipped[kind] += 1
+            route.abort("blockedbyclient")
+        elif allowed_url(url, self.allowed_hosts):
             self.requests_allowed[host] += 1
             route.continue_()
         else:
@@ -188,24 +249,49 @@ class BrowserClient:
             return ""
         blocked = sum(self.requests_blocked.values())
         top = ", ".join("{} x{}".format(h, n) for h, n in self.requests_blocked.most_common(8))
-        return "Ad blocking: {} requests allowed, {} blocked ({} hosts). Busiest blocked: {}".format(
-            sum(self.requests_allowed.values()), blocked, len(self.requests_blocked), top or "none")
+        skipped = ", ".join("{} x{}".format(k, n) for k, n in self.requests_skipped.items())
+        return "Ad blocking: {} requests allowed, {} blocked ({} hosts). Busiest blocked: {}{}".format(
+            sum(self.requests_allowed.values()), blocked, len(self.requests_blocked), top or "none",
+            ". Also skipped on allowed hosts: " + skipped if skipped else "")
 
     def __exit__(self, exc_type, exc_value, traceback):
         summary = self.block_summary()
         if summary:
             print(summary)
         try:
-            if self.browser is not None:
+            if self._persistent and self.context is not None:
+                self.context.close()
+            elif self.browser is not None:
                 self.browser.close()
         finally:
             if self._playwright is not None:
                 self._playwright.stop()
 
-    @staticmethod
-    def _pace_request(delays=REQUEST_DELAYS):
-        """Add a small randomized pause before each outbound request."""
-        sleep(random.uniform(*delays))
+    def _pace_request(self, delays=REQUEST_DELAYS):
+        """Add a small randomized pause before each outbound request, longer after blocks."""
+        sleep(random.uniform(*delays) * self.slowdown)
+
+    def _note_block(self, what):
+        """A rate limit or challenge happened: slow down, and stop if it keeps happening."""
+        self.block_streak += 1
+        self.clean_streak = 0
+        self.slowdown = min(self.slowdown * 2, MAX_SLOWDOWN)
+        print("Blocked ({}); pauses are now {:g}x as long ({} in a row, limit {}).".format(
+            what, self.slowdown, self.block_streak, MAX_CONSECUTIVE_BLOCKS), flush=True)
+        if self.block_streak >= MAX_CONSECUTIVE_BLOCKS:
+            raise TooManyBlocksError(
+                "the site blocked {} requests in a row ({}); stopping so it is not pushed further. "
+                "Progress is saved; wait an hour or more, then rerun".format(self.block_streak, what))
+
+    def _note_ok(self):
+        """A request went through: the streak is over, and long quiet stretches speed things up."""
+        self.block_streak = 0
+        self.clean_streak += 1
+        if self.slowdown > 1 and self.clean_streak >= CLEAN_FETCHES_TO_SPEED_UP:
+            self.slowdown = max(1.0, self.slowdown / 2)
+            self.clean_streak = 0
+            print("No blocks for {} fetches; pauses are now {:g}x.".format(
+                CLEAN_FETCHES_TO_SPEED_UP, self.slowdown), flush=True)
 
     @staticmethod
     def _rate_limit_wait(url, headers, operation):
@@ -427,12 +513,14 @@ class BrowserClient:
 
             # Handle 429 before challenge and generic HTTP error checks.
             if response.status == 429:
+                self._note_block("HTTP 429 loading {}".format(url))
                 if _attempt < MAX_RATE_LIMIT_RETRIES:
                     self._rate_limit_wait(url, response.headers, "loading")
                 continue
 
             challenge_reason = cloudflare_challenge_reason(self.page)
             if challenge_reason and self._challenge_clears():
+                self._note_block("Cloudflare challenge before {}, cleared by itself".format(url))
                 # The interstitial passed by itself, as it does in any browser that is left alone
                 # for a few seconds. Nothing was clicked or changed; the page we now have is the
                 # real one, so the status of the interstitial no longer applies.
@@ -461,6 +549,7 @@ class BrowserClient:
                         boxes = 0
                 if not boxes:
                     self._wait_for_lazy(wait_for, stop_at)
+            self._note_ok()
             return html.fromstring(self.page.content())
         raise RuntimeError(
             "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
@@ -489,6 +578,7 @@ class BrowserClient:
             )
             try:
                 if response.status == 429:
+                    self._note_block("HTTP 429 downloading {}".format(image_url))
                     if _attempt < MAX_RATE_LIMIT_RETRIES:
                         self._rate_limit_wait(
                             image_url, response.headers, "downloading image"
@@ -513,6 +603,7 @@ class BrowserClient:
                 partial = destination.with_name(destination.name + ".part")
                 partial.write_bytes(data)
                 os.replace(partial, destination)
+                self._note_ok()
                 return True
             finally:
                 response.dispose()
