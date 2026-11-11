@@ -189,7 +189,9 @@ with tempfile.TemporaryDirectory() as _tmp:
             ps.BrowserClient = _real
         _rows = sqlite3.connect("p.sqlite").execute("select count(*) from perfumes").fetchone()[0]
         assert _rows == 1, _rows   # only the complete page was recorded
-        assert Path("perfumes_incomplete.txt").read_text().strip().endswith("One-1.html")
+        assert "One-1.html" in Path("perfumes_incomplete.txt").read_text()
+        assert "gender card missing" in Path("perfumes_incomplete.txt").read_text()
+        assert Path("perfumes_incomplete/One-1.html").is_file()   # the page is kept for diagnosis
     finally:
         os.chdir(_old)
 print("pages with missing vote cards are skipped, listed and retried later OK")

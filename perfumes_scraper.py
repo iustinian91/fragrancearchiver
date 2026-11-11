@@ -12,7 +12,8 @@ from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import PerfumesDBHelper
 
 IMAGE_DIR = Path("fragrantica_images/perfumes")
-INCOMPLETE_FILE = "perfumes_incomplete.txt"
+INCOMPLETE_FILE = "perfumes_incomplete.txt"   # url and reason, one per line
+INCOMPLETE_DIR = Path("perfumes_incomplete")   # the pages themselves, as they were read
 PERFUME_URL = re.compile(
     r"/perfume/(?P<brand>[^/]+)/(?P<title>.+)-\d+\.html?$",
     re.IGNORECASE,
@@ -294,8 +295,12 @@ def check_page(tree, url):
         raise ValueError("{} does not look like a perfume page (no title or heading)".format(url))
 
 
-class IncompleteVotesError(RuntimeError):
-    """The page was read, but fewer than the usual three vote cards had appeared."""
+class IncompletePageError(RuntimeError):
+    """The page was read, but not everything we need had appeared on it. Carries the page."""
+
+    def __init__(self, message, tree):
+        super().__init__(message)
+        self.tree = tree
 
 
 DEBUG_DIR = None   # set (e.g. by the smoke test) to keep the page exactly as the scraper read it
@@ -314,6 +319,20 @@ def card_summary(tree):
     return "; ".join(parts) or "no vote cards"
 
 
+def vote_card_problems(tree):
+    """What is missing from the longevity, sillage and gender cards: "gender card missing",
+    "sillage card has no numbers". Empty if all three are there and filled."""
+    cards = {}
+    for card in tree.xpath(PERF_CARD):
+        label = " ".join(card.xpath(".//span[contains(@class,'uppercase')]/text()")).lower()
+        rows = card.xpath(".//*[contains(@class,'space-y-2')]")
+        for name in ("longevity", "sillage", "gender"):
+            if name in label:
+                cards[name] = bool(rows) and any(ch.isdigit() for ch in rows[0].text_content())
+    return ["{} card missing".format(name) if name not in cards else "{} card has no numbers".format(name)
+            for name in ("longevity", "sillage", "gender") if not cards.get(name)]
+
+
 def scrape_perfume(client, url):
     """Fetch and parse one perfume page. Returns (perfume dict, record tuple)."""
     match = PERFUME_URL.search(url)
@@ -325,12 +344,11 @@ def scrape_perfume(client, url):
     tree = client.fetch_tree(url, wait_for=VOTES_READY, stop_at=VOTES_STOP_AT,
                              lazy_boxes=VOTES_BOX, expect_boxes=VOTE_CARDS)
     check_page(tree, url)
-    cards = len(tree.xpath(PERF_CARD))
-    if cards < VOTE_CARDS:
-        # Every perfume page has longevity, sillage and gender cards, even with no votes, so a
-        # page with fewer was read before it finished drawing. Don't record it as complete.
-        raise IncompleteVotesError("only {} of {} vote cards had appeared on {}: {}".format(
-            cards, VOTE_CARDS, url.rsplit("/", 1)[-1], card_summary(tree)))
+    problems = vote_card_problems(tree)
+    if problems:
+        # Every perfume page has longevity, sillage and gender cards with numbers in them, even
+        # with no votes, so a page without was read before it finished drawing.
+        raise IncompletePageError("{}; cards when read: {}".format(", ".join(problems), card_summary(tree)), tree)
 
     names = page_name_candidates(tree)
     page_brand = find_name(names, url_brand) or heading_brand(tree)
@@ -428,12 +446,15 @@ def main(argv=None):
             for position, url in enumerate(pending, start=1):
                 try:
                     perfume, record = scrape_perfume(client, url)
-                except IncompleteVotesError as exc:
+                except IncompletePageError as exc:
                     # Not marked complete, so the next run tries it again; the crawl goes on.
-                    print("  [incomplete] {}".format(exc), flush=True)
+                    # The page is kept so the reason can be looked into later.
+                    print("  [incomplete] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     incomplete.append(url)
+                    INCOMPLETE_DIR.mkdir(parents=True, exist_ok=True)
+                    (INCOMPLETE_DIR / url.rsplit("/", 1)[-1]).write_bytes(html.tostring(exc.tree))
                     with open(INCOMPLETE_FILE, "a", encoding="utf-8") as log:
-                        log.write(url + "\n")
+                        log.write("{}\t{}\n".format(url, exc))
                     continue
                 db.add_record_for_url(url, record)
                 completed.add(url)
@@ -475,7 +496,8 @@ def main(argv=None):
         ))
     if incomplete:
         print("{} page(s) were not recorded because their vote cards had not all appeared "
-              "(listed in {}); run the scraper again to retry them.".format(len(incomplete), INCOMPLETE_FILE))
+              "(listed in {}, pages kept in {}/); run the scraper again to retry them.".format(
+                  len(incomplete), INCOMPLETE_FILE, INCOMPLETE_DIR))
     print("Completed: {} perfume URLs processed.".format(len(completed)))
     return 0
 

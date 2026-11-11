@@ -81,3 +81,6 @@ summary = ps.card_summary(empty_cards)
 assert "GENDER(1 rows, EMPTY)" in summary, summary
 assert ps.card_summary(html.fromstring("<html><body></body></html>")) == "no vote cards"
 print("card_summary describes empty and missing cards OK")
+
+# which vote cards are missing or empty
+assert ps.vote_card_problems(empty_cards) == ["longevity card missing", "sillage card missing", "gender card has no numbers"]
