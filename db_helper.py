@@ -35,6 +35,15 @@ class _TableDB:
             )
             """
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gone_urls (
+                url TEXT PRIMARY KEY,
+                reason TEXT,
+                seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         self._canonicalize_progress()
         self.conn.commit()
 
@@ -79,6 +88,15 @@ class _TableDB:
         """Return every source URL already committed to this database."""
         rows = self.conn.execute("SELECT url FROM scrape_progress")
         return {row[0] for row in rows}
+
+    def mark_gone(self, url, reason):
+        """Remember that the site no longer has this page, so later runs do not ask for it."""
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO gone_urls (url, reason) VALUES (?, ?)", (canonical_url(url), reason))
+
+    def gone_urls(self):
+        return {row[0] for row in self.conn.execute("SELECT url FROM gone_urls")}
 
     def migrate_legacy_progress(self, manifest_urls):
         """

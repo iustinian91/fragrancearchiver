@@ -19,7 +19,12 @@ REQUEST_TIMEOUT_MS = 60000
 REQUEST_DELAYS = (2.5, 10.0)
 IMAGE_DELAYS = (0.5, 1.5)  # images come from the CDN right after a page; no need to wait as long
 CHALLENGE_WAIT_SECONDS = 20   # how long a Cloudflare "checking your browser" page may take to clear itself
-MAX_RATE_LIMIT_RETRIES = 5
+MAX_RATE_LIMIT_RETRIES = 2        # a page that is rate limited is tried 3 times in all (see MAX_CONSECUTIVE_BLOCKS)
+MAX_RETRY_AFTER_SECONDS = 900     # a Retry-After longer than 15 minutes ends the run instead of sleeping
+SERVER_RETRIES = 2                # HTTP 5xx: tried again this many times, after a pause
+SERVER_RETRY_WAIT_SECONDS = 30
+MAX_UNREADABLE_IN_A_ROW = 3       # pages in a row that could not be read (not blocked) before a crawl stops
+MISSING_PAGE_STATUSES = (404, 410)
 MAX_CONSECUTIVE_BLOCKS = 3    # a 429 or a challenge this many times in a row ends the run
 MAX_SLOWDOWN = 8.0            # the delays never grow beyond 8 times their normal length
 CLEAN_FETCHES_TO_SPEED_UP = 50   # blocks-free fetches before the delays are halved again
@@ -28,7 +33,7 @@ RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
 SCROLL_STEP_WAIT_MS = 500
 STABLE_SCROLL_CHECKS = 3
-MAX_SCROLL_STEPS = 150
+MAX_SCROLL_STEPS = 600   # a designer with thousands of perfumes needs a few hundred steps
 MAX_LAZY_STEPS = 20
 BOX_FILL_WAIT_MS = 1500      # how long a placeholder box gets to fill in once it is on screen
 BOX_FILL_ATTEMPTS = 4        # how many times a box is scrolled to again before giving up on it
@@ -69,6 +74,10 @@ def allowed_url(url, allowed_hosts=ALLOWED_HOSTS):
 
 class ScrollIncompleteError(RuntimeError):
     """Raised when a lazy-loaded list is still growing when the scroll limit is reached."""
+
+
+class PageGoneError(RuntimeError):
+    """The site says the page no longer exists (HTTP 404/410). Not a block: skip it and go on."""
 
 
 class TooManyBlocksError(RuntimeError):
@@ -116,7 +125,6 @@ def cloudflare_challenge_reason(page):
     return None
 
 
-MISSING_IMAGE_STATUSES = (404, 410)
 IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF8", b"RIFF")  # jpeg, png, gif, webp
 
 
@@ -321,6 +329,11 @@ class BrowserClient:
                         flush=True,
                     )
 
+        if wait_seconds > MAX_RETRY_AFTER_SECONDS:
+            raise TooManyBlocksError(
+                "the site asked for a wait of {:.0f} seconds (HTTP 429 {} {}), longer than the "
+                "{} seconds this crawler will wait; stopping. Progress is saved; try again later".format(
+                    wait_seconds, operation, url, MAX_RETRY_AFTER_SECONDS))
         wait_seconds += RETRY_AFTER_BUFFER_SECONDS
         print(
             "HTTP 429 while {} {}. Waiting at least {:.1f} seconds before retrying.".format(
@@ -330,12 +343,15 @@ class BrowserClient:
         )
         sleep(wait_seconds)
 
-    def _scroll_until_stable(self, item_selector):
+    scroll_complete = True   # False if the last fetch hit the scroll limit with the list still growing
+
+    def _scroll_until_stable(self, item_selector, allow_partial=False):
         """Scroll a long page until the number of `item_selector` matches stops growing.
 
         Done when the page is at the bottom and the count has not grown for
         STABLE_SCROLL_CHECKS checks in a row. Raises ScrollIncompleteError if it is still
-        growing after MAX_SCROLL_STEPS, because stopping there would silently drop items."""
+        growing after MAX_SCROLL_STEPS, because stopping there would silently drop items; with
+        `allow_partial` it returns what it has and sets `scroll_complete` to False instead."""
         last_count, stable = -1, 0
         for _step in range(MAX_SCROLL_STEPS):
             count = self.page.locator(item_selector).count()
@@ -352,6 +368,9 @@ class BrowserClient:
                 "() => window.scrollBy(0, Math.max(400, Math.floor(window.innerHeight * 0.8)))"
             )
             self.page.wait_for_timeout(SCROLL_STEP_WAIT_MS)
+        if allow_partial:
+            self.scroll_complete = False
+            return last_count
         raise ScrollIncompleteError(
             "Page {} was still loading items after {} scroll steps ({} found); stopping instead "
             "of saving a partial list.".format(self.page.url, MAX_SCROLL_STEPS, last_count)
@@ -488,7 +507,7 @@ class BrowserClient:
             pass
 
     def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
-                   lazy_boxes=None, expect_boxes=0):
+                   lazy_boxes=None, expect_boxes=0, allow_partial=False):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
         `wait_for`: CSS selector of content the page draws after it opens; scrolls only until
@@ -500,8 +519,14 @@ class BrowserClient:
         `lazy_boxes`: CSS selector of placeholder boxes the page fills in when they are
         scrolled into view; each is brought into view and given time to fill (`wait_for` is the
         selector that appears inside a filled box). Pages without such boxes fall back to
-        scrolling for `wait_for`."""
-        for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        scrolling for `wait_for`.
+        `allow_partial`: with `scroll_for`, a list still growing at the scroll limit is returned
+        as it is and `scroll_complete` is set to False, instead of raising.
+
+        HTTP 404/410 raise PageGoneError; 5xx is tried again SERVER_RETRIES times."""
+        self.scroll_complete = True
+        rate_limited = server_failed = 0
+        while True:
             self._pace_request()
             response = self.page.goto(
                 url,
@@ -514,8 +539,12 @@ class BrowserClient:
             # Handle 429 before challenge and generic HTTP error checks.
             if response.status == 429:
                 self._note_block("HTTP 429 loading {}".format(url))
-                if _attempt < MAX_RATE_LIMIT_RETRIES:
-                    self._rate_limit_wait(url, response.headers, "loading")
+                rate_limited += 1
+                if rate_limited > MAX_RATE_LIMIT_RETRIES:
+                    raise RuntimeError(
+                        "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
+                            url, MAX_RATE_LIMIT_RETRIES))
+                self._rate_limit_wait(url, response.headers, "loading")
                 continue
 
             challenge_reason = cloudflare_challenge_reason(self.page)
@@ -532,12 +561,22 @@ class BrowserClient:
                     )
                 )
 
+            if response is not None and response.status in MISSING_PAGE_STATUSES:
+                raise PageGoneError("HTTP {} for {}".format(response.status, url))
+            if response is not None and response.status >= 500:
+                server_failed += 1
+                if server_failed > SERVER_RETRIES:
+                    raise RuntimeError("HTTP {} for {} after {} retries".format(
+                        response.status, url, SERVER_RETRIES))
+                print("HTTP {} for {}; trying again in {} s.".format(
+                    response.status, url, SERVER_RETRY_WAIT_SECONDS * server_failed), flush=True)
+                sleep(SERVER_RETRY_WAIT_SECONDS * server_failed)
+                continue
             if response is not None and response.status >= 400:
-                detail = "HTTP {} for {}".format(response.status, url)
-                raise RuntimeError(detail)
+                raise RuntimeError("HTTP {} for {}".format(response.status, url))
 
             if scroll_for:
-                self._scroll_until_stable(scroll_for)
+                self._scroll_until_stable(scroll_for, allow_partial)
             if wait_for:
                 boxes = 0
                 if lazy_boxes:
@@ -551,26 +590,23 @@ class BrowserClient:
                     self._wait_for_lazy(wait_for, stop_at)
             self._note_ok()
             return html.fromstring(self.page.content())
-        raise RuntimeError(
-            "HTTP 429 for {} after {} retries; the site is rate limiting this crawl".format(
-                url, MAX_RATE_LIMIT_RETRIES
-            )
-        )
 
     def download_image(self, image_url, destination):
         """Download an image, retrying HTTP 429 after the required cooldown.
 
-        Returns True when the file is on disk afterwards. A picture the site no longer has
-        (404/410) is reported and skipped, returning False, so one broken link does not stop a
-        crawl. Anything else that goes wrong raises. The file is written under a temporary name
-        and renamed, so a crash never leaves a truncated image that a later run would trust."""
+        Returns True when the file is on disk afterwards. A picture that cannot be had (HTTP
+        404/410, another error status, or a body that is not an image) is reported and skipped,
+        returning False, so one broken picture does not stop a crawl. A 403, which may be a block,
+        and anything else that goes wrong raises. The file is written under a temporary name and
+        renamed, so a crash never leaves a truncated image that a later run would trust."""
         destination = Path(destination)
         if destination.exists():
             return True
 
         destination.parent.mkdir(parents=True, exist_ok=True)
 
-        for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        rate_limited = 0
+        while True:
             self._pace_request(IMAGE_DELAYS)
             response = self.context.request.get(
                 image_url,
@@ -579,27 +615,26 @@ class BrowserClient:
             try:
                 if response.status == 429:
                     self._note_block("HTTP 429 downloading {}".format(image_url))
-                    if _attempt < MAX_RATE_LIMIT_RETRIES:
-                        self._rate_limit_wait(
-                            image_url, response.headers, "downloading image"
-                        )
+                    rate_limited += 1
+                    if rate_limited > MAX_RATE_LIMIT_RETRIES:
+                        raise RuntimeError(
+                            "HTTP 429 downloading image {} after {} retries".format(
+                                image_url, MAX_RATE_LIMIT_RETRIES))
+                    self._rate_limit_wait(image_url, response.headers, "downloading image")
                     continue
 
-                if response.status in MISSING_IMAGE_STATUSES:
-                    print("Image not available (HTTP {}): {}".format(response.status, image_url), flush=True)
-                    return False
+                if response.status == 403:
+                    raise RuntimeError("HTTP 403 downloading image {}".format(image_url))
 
                 if not response.ok:
-                    raise RuntimeError(
-                        "HTTP {} downloading image {}".format(
-                            response.status, image_url
-                        )
-                    )
+                    print("Image not available (HTTP {}): {}".format(response.status, image_url), flush=True)
+                    return False
 
                 data = response.body()
                 problem = image_problem(data)
                 if problem:
-                    raise RuntimeError("Bad image from {}: {}".format(image_url, problem))
+                    print("Image skipped, {}: {}".format(problem, image_url), flush=True)
+                    return False
                 partial = destination.with_name(destination.name + ".part")
                 partial.write_bytes(data)
                 os.replace(partial, destination)
@@ -607,8 +642,3 @@ class BrowserClient:
                 return True
             finally:
                 response.dispose()
-        raise RuntimeError(
-            "HTTP 429 downloading image {} after {} retries".format(
-                image_url, MAX_RATE_LIMIT_RETRIES
-            )
-        )

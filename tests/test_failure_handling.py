@@ -62,16 +62,13 @@ with tempfile.TemporaryDirectory() as tmp:
     # a missing picture is skipped, not fatal
     assert client_with(Response(404)).download_image("u", tmp / "b.jpg") is False
     assert not (tmp / "b.jpg").exists()
-    # empty and non-image bodies are refused and leave nothing on disk
+    # empty and non-image bodies are refused and leave nothing on disk; the crawl goes on
     for body in (b"", b"<html>blocked</html>"):
-        try:
-            client_with(Response(200, body)).download_image("u", tmp / "c.jpg")
-        except RuntimeError as exc:
-            assert "Bad image" in str(exc)
-        else:
-            raise AssertionError("bad image accepted")
+        assert client_with(Response(200, body)).download_image("u", tmp / "c.jpg") is False
         assert not (tmp / "c.jpg").exists() and not list(tmp.glob("*.part"))
-    # other HTTP errors still stop the crawl
+    # a server error on one picture skips it too
+    assert client_with(Response(500)).download_image("u", tmp / "e.jpg") is False
+    # a 403 may be a block, so it still stops the crawl
     try:
         client_with(Response(403)).download_image("u", tmp / "d.jpg")
     except RuntimeError:
@@ -286,3 +283,159 @@ try:
 finally:
     bc.PROFILE_DIR, bc.BLOCK_ADS = _old
 print("slowdown, stop after three blocks, and profile options OK")
+
+
+# ---- pages that are gone, server errors, a huge Retry-After ----
+class _Resp:
+    def __init__(self, status, headers=None):
+        self.status, self.headers = status, headers or {}
+
+
+class _GotoPage:
+    url = "https://www.fragrantica.com/x"
+
+    def __init__(self, statuses):
+        self.statuses = list(statuses)
+
+    def goto(self, *a, **k):
+        return _Resp(self.statuses.pop(0))
+
+    def title(self):
+        return "ok"
+
+    def content(self):
+        return "<html><body>ok</body></html>"
+
+    def locator(self, *a):
+        raise AssertionError("not needed")
+
+
+def _client(statuses):
+    c = bc.BrowserClient.__new__(bc.BrowserClient)
+    c.slowdown, c.block_streak, c.clean_streak, c.timeout_ms = 1.0, 0, 0, 1000
+    c.page = _GotoPage(statuses)
+    return c
+
+
+_real_reason = bc.cloudflare_challenge_reason
+bc.cloudflare_challenge_reason = lambda page: None
+try:
+    for status in (404, 410):
+        try:
+            _client([status]).fetch_tree("https://www.fragrantica.com/x")
+            raise AssertionError("a missing page must raise")
+        except bc.PageGoneError as exc:
+            assert str(status) in str(exc)
+    assert issubclass(bc.PageGoneError, RuntimeError)
+    c = _client([503, 502, 200])                      # two server errors, then the page
+    assert c.fetch_tree("https://www.fragrantica.com/x") is not None and c.page.statuses == []
+    try:
+        _client([500, 500, 500]).fetch_tree("https://www.fragrantica.com/x")
+        raise AssertionError("a lasting server error must raise")
+    except RuntimeError as exc:
+        assert "after 2 retries" in str(exc) and not isinstance(exc, bc.PageGoneError)
+    try:
+        _client([403]).fetch_tree("https://www.fragrantica.com/x")
+        raise AssertionError("403 must raise")
+    except RuntimeError as exc:
+        assert "HTTP 403" in str(exc)
+finally:
+    bc.cloudflare_challenge_reason = _real_reason
+try:
+    bc.BrowserClient._rate_limit_wait("u", {"retry-after": "86400"}, "loading")
+    raise AssertionError("a day-long wait must stop the run")
+except bc.TooManyBlocksError as exc:
+    assert "86400" in str(exc)
+print("gone pages, server errors and an excessive Retry-After are handled OK")
+
+# a list still growing at the scroll limit: returned as it is when allowed, an error otherwise
+class _GrowingPage:
+    def __init__(self):
+        self.n = 0
+    class _Loc:
+        def __init__(s, page): s.page = page
+        def count(s): return s.page.n
+    def locator(self, sel): return _GrowingPage._Loc(self)
+    def evaluate(self, js):
+        if "scrollBy" in js:
+            self.n += 10
+        return True
+    def wait_for_timeout(self, ms): pass
+    url = "u"
+
+
+_steps = bc.MAX_SCROLL_STEPS
+bc.MAX_SCROLL_STEPS = 12
+try:
+    c = bc.BrowserClient.__new__(bc.BrowserClient)
+    c.page = _GrowingPage()
+    assert c._scroll_until_stable("a", allow_partial=True) == 110 and c.scroll_complete is False
+    c.page = _GrowingPage()
+    try:
+        c._scroll_until_stable("a")
+        raise AssertionError("expected ScrollIncompleteError")
+    except bc.ScrollIncompleteError:
+        pass
+finally:
+    bc.MAX_SCROLL_STEPS = _steps
+assert bc.MAX_SCROLL_STEPS >= 600
+print("a list still growing at the scroll limit can be kept as partial OK")
+
+# ---- the scraper: gone and unreadable pages are skipped and listed; a run of unreadable ones stops ----
+class _PageFake:
+    def __init__(self, behaviour):
+        self.behaviour = behaviour
+
+    def fetch_tree(self, url, **kwargs):
+        what = self.behaviour(url)
+        if what == "gone":
+            raise bc.PageGoneError("HTTP 404 for " + url)
+        if what == "blank":
+            return html.fromstring("<html><body></body></html>")
+        return _page(("LONGEVITY", "SILLAGE", "GENDER"))
+
+    def download_image(self, image_url, destination):
+        return False   # the picture is not available
+
+
+def _crawl(urls, behaviour):
+    old = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chdir(tmp)
+        try:
+            Path("perfumes_manifest.txt").write_text("".join("https://www.fragrantica.com/perfume/B/N{0}-{0}.html\n".format(i) for i in urls))
+
+            class Browser:
+                def __enter__(s): return _PageFake(behaviour)
+                def __exit__(s, *e): return False
+            real, ps.BrowserClient = ps.BrowserClient, Browser
+            try:
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    code = ps.main(["--db", "p.sqlite"])
+                    code2 = ps.main(["--db", "p.sqlite"])      # a second run
+            finally:
+                ps.BrowserClient = real
+            conn = sqlite3.connect("p.sqlite")
+            return (code, code2, out.getvalue(), conn.execute("select count(*) from perfumes").fetchone()[0],
+                    conn.execute("select count(*) from gone_urls").fetchone()[0],
+                    Path("perfumes_gone.txt").read_text() if Path("perfumes_gone.txt").exists() else "",
+                    Path("perfumes_failed.txt").read_text() if Path("perfumes_failed.txt").exists() else "",
+                    conn.execute("select perfume from perfumes").fetchall())
+        finally:
+            os.chdir(old)
+
+
+import contextlib  # noqa: E402
+import io  # noqa: E402
+code, code2, out, rows, gone_rows, gone_log, failed_log, perfumes = _crawl(
+    [1, 2, 3], lambda url: "gone" if "N2-" in url else "ok")
+assert code == 0 and rows == 2 and gone_rows == 1 and "N2-2.html" in gone_log, (code, rows, gone_rows, gone_log)
+assert "will not be asked for again" in out
+assert '"image": null' in perfumes[0][0] or '"image": null' in str(perfumes), "a missing picture is not named"
+assert len(gone_log.splitlines()) == 1, "the gone page is not asked for again on the next run"
+code, code2, out, rows, *_ = _crawl([1, 2], lambda url: "blank" if "N1-" in url else "ok")
+assert code == 0 and rows == 1                                           # one unreadable page is skipped
+code, code2, out, rows, gone_rows, gone_log, failed_log, _ = _crawl([1, 2, 3, 4], lambda url: "blank")
+assert code == 1 and "3 pages in a row could not be read" in out and failed_log.count("\n") >= 3
+print("gone and unreadable pages are skipped and listed; a run of them stops the crawl OK")

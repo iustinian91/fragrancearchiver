@@ -9,13 +9,15 @@ from pathlib import Path
 from lxml import html
 
 import browser_client
-from browser_client import FETCH_ERRORS, BrowserClient
+from browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
 from db_helper import PerfumesDBHelper
 from urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/perfumes")
 INCOMPLETE_FILE = "perfumes_incomplete.txt"   # url and reason, one per line
 INCOMPLETE_DIR = Path("perfumes_incomplete")   # the pages themselves, as they were read
+GONE_FILE = "perfumes_gone.txt"               # pages the site no longer has (HTTP 404/410): url and reason
+FAILED_FILE = "perfumes_failed.txt"           # pages that could not be read (blank, malformed): url and reason
 PERFUME_URL = re.compile(
     r"/perfume/(?P<brand>[^/]+)/(?P<title>.+)-\d+\.html?$",
     re.IGNORECASE,
@@ -377,17 +379,19 @@ def scrape_perfume(client, url):
     brand = page_brand or url_brand
 
     perfume_image_url = page_image_url(tree)
+    perfume_image_file_name = None
     if perfume_image_url:
-        perfume_image_file_name = perfume_image_url.split("/")[-1]
-        client.download_image(perfume_image_url, IMAGE_DIR / perfume_image_file_name)
-    else:
-        perfume_image_file_name = None
+        file_name = perfume_image_url.split("/")[-1]
+        # Only name a file that is on disk; the address is kept so the picture can be fetched later.
+        if client.download_image(perfume_image_url, IMAGE_DIR / file_name):
+            perfume_image_file_name = file_name
 
     page_titles = tree.xpath("//title/text()")
     page_title = " ".join(page_titles[0].split()) if page_titles else ""
     perfume = {
         "title": page_title_name or url_title,
         "image": perfume_image_file_name,
+        "image_url": perfume_image_url,
         # Where each name came from, so clean.py only re-cases the slug-derived ones.
         "title_source": "page" if page_title_name else "url",
         "brand_source": "page" if page_brand else "url",
@@ -445,7 +449,8 @@ def main(argv=None):
         return 1
 
     total = len(perfume_urls)
-    pending = [url for url in perfume_urls if url not in completed]
+    gone = db.gone_urls()
+    pending = [url for url in perfume_urls if url not in completed and url not in gone]
     if args.limit is not None:
         pending = pending[:args.limit]
     print(
@@ -462,7 +467,8 @@ def main(argv=None):
         ("year", "accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers"), 0
     )
     scraped = 0
-    incomplete = []
+    incomplete, newly_gone, unreadable = [], [], []
+    unreadable_in_a_row = 0
 
     try:
         with BrowserClient() as client:
@@ -479,6 +485,26 @@ def main(argv=None):
                     with open(INCOMPLETE_FILE, "a", encoding="utf-8") as log:
                         log.write("{}\t{}\n".format(url, exc))
                     continue
+                except PageGoneError as exc:
+                    print("  [gone] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
+                    db.mark_gone(url, str(exc))
+                    newly_gone.append(url)
+                    with open(GONE_FILE, "a", encoding="utf-8") as log:
+                        log.write("{}\t{}\n".format(url, exc))
+                    continue
+                except ValueError as exc:
+                    # Malformed URL or a blank page: skip it, but a run of them means something
+                    # is wrong with the site or the browser, so stop then.
+                    print("  [unreadable] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
+                    unreadable.append(url)
+                    with open(FAILED_FILE, "a", encoding="utf-8") as log:
+                        log.write("{}\t{}\n".format(url, exc))
+                    unreadable_in_a_row += 1
+                    if unreadable_in_a_row >= MAX_UNREADABLE_IN_A_ROW:
+                        raise RuntimeError("{} pages in a row could not be read (last: {})".format(
+                            unreadable_in_a_row, exc))
+                    continue
+                unreadable_in_a_row = 0
                 db.add_record_for_url(url, record)
                 completed.add(url)
                 scraped += 1
@@ -522,6 +548,12 @@ def main(argv=None):
         print("{} page(s) were not recorded because their vote cards had not all appeared "
               "(listed in {}, pages kept in {}/); run the scraper again to retry them.".format(
                   len(incomplete), INCOMPLETE_FILE, INCOMPLETE_DIR))
+    if newly_gone:
+        print("{} page(s) no longer exist on the site (listed in {}); they will not be asked for again.".format(
+            len(newly_gone), GONE_FILE))
+    if unreadable:
+        print("{} page(s) could not be read (listed in {}); they are tried again on the next run.".format(
+            len(unreadable), FAILED_FILE))
     print("Completed: {} perfume URLs processed.".format(len(completed)))
     return 0
 

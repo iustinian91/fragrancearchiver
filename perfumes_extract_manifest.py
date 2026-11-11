@@ -146,10 +146,17 @@ def fetch_designer_perfumes(client, brand_url, counts=None):
     counts = counts if counts is not None else Counter()
     best, expected = [], 0
     for attempt in (1, 2):
-        tree = client.fetch_tree(brand_url, scroll_for=PERFUME_LINKS)
+        tree = client.fetch_tree(brand_url, scroll_for=PERFUME_LINKS, allow_partial=True)
         urls = matching_urls(tree, brand_url, PERFUME_PATH)
         if len(urls) > len(best):
             best = urls
+        if not getattr(client, "scroll_complete", True):
+            # Still growing at the scroll limit: a second try would not get further.
+            print("[Short] {} was still growing at the scroll limit; kept the {} perfumes found, "
+                  "recorded in {}".format(brand_url, len(urls), SHORT_PATH), flush=True)
+            with SHORT_PATH.open("a", encoding="utf-8") as short:
+                short.write("{}\t{}\tscroll limit reached\n".format(brand_url, len(urls)))
+            return urls, "short"
         expected = expected_count(brand_url, best, counts)
         if best and not is_short(len(best), expected):
             return best, "ok"

@@ -38,3 +38,7 @@ perfumes_manifest.short.txt
 perfumes_manifest.new.txt
 notes_manifest.new.txt
 *.canonical
+perfumes_gone.txt
+perfumes_failed.txt
+notes_gone.txt
+notes_failed.txt

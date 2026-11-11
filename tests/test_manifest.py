@@ -79,7 +79,7 @@ class Fake:
         @staticmethod
         def title(): return "Designer"
     page = page_
-    def fetch_tree(s, url, wait_for=None, scroll_for=None):
+    def fetch_tree(s, url, wait_for=None, scroll_for=None, allow_partial=False):
         s.seen.append(url)
         if url == s.fail_on:
             raise RuntimeError("HTTP 403")
@@ -144,7 +144,7 @@ import io  # noqa: E402
 
 class Queue(Fake):
     """Fake whose page list per URL is a queue: each fetch takes the next page (the last repeats)."""
-    def fetch_tree(s, url, wait_for=None, scroll_for=None):
+    def fetch_tree(s, url, wait_for=None, scroll_for=None, allow_partial=False):
         s.seen.append(url)
         pages = s.pages[url]
         return pages.pop(0) if len(pages) > 1 else pages[0]
@@ -222,3 +222,23 @@ with tempfile.TemporaryDirectory() as tmp:
     assert run_quiet(Fake(pages))[0] == 0
     assert Path("perfumes_manifest.txt").read_text().split() == [B + p("A", 1), B + p("A", 2)]
     print("http:// lines from an older run become canonical and are not repeated OK")
+
+
+# ---- a designer page still growing at the scroll limit keeps its partial list and the crawl goes on ----
+class Partial(Fake):
+    scroll_complete = True
+
+    def fetch_tree(s, url, wait_for=None, scroll_for=None, allow_partial=False):
+        s.scroll_complete = url != B + d("A")
+        return super().fetch_tree(url, wait_for, scroll_for, allow_partial)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    pages = {country: page([d("A"), d("B")]), B + d("A"): page([p("A", 1), p("A", 2)]), B + d("B"): page([p("B", 3)])}
+    c = Partial(pages)
+    code, out = run_quiet(c)
+    assert code == 0 and c.seen.count(B + d("A")) == 1, "a partial list is not fetched again"
+    assert len(Path("perfumes_manifest.txt").read_text().split()) == 3
+    assert Path("perfumes_manifest.short.txt").read_text() == B + d("A") + "\t2\tscroll limit reached\n"
+    print("a designer that hits the scroll limit keeps its partial list OK")
