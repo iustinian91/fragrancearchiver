@@ -145,3 +145,51 @@ for _clears_after, _expected in ((3, True), (10 ** 6, False)):
     assert _client._challenge_clears() is _expected
 bc.cloudflare_challenge_reason = _real_reason
 print("challenge pages that clear themselves are waited out, others still stop OK")
+
+# a page whose vote cards had not all appeared is not recorded as complete, and the crawl goes on
+_CARD = "<div class='tw-perf-card'><span class='uppercase'>{}</span><div class='space-y-2'><div>x</div><span>5</span></div></div>"
+
+
+def _page(cards):
+    return html.fromstring("<html><head><title>T</title></head><body><h1>Vanilla</h1>{}</body></html>".format(
+        "".join(_CARD.format(name) for name in cards)))
+
+
+class _Fake:
+    def __init__(self):
+        self.seen = []
+
+    def fetch_tree(self, url, **kwargs):
+        self.seen.append(url)
+        return _page(("LONGEVITY", "SILLAGE") if url.endswith("-1.html") else ("LONGEVITY", "SILLAGE", "GENDER"))
+
+    def download_image(self, image_url, destination):
+        return True
+
+
+class _Browser:
+    def __enter__(self):
+        return _Fake()
+
+    def __exit__(self, *exc):
+        return False
+
+
+_old = os.getcwd()
+with tempfile.TemporaryDirectory() as _tmp:
+    os.chdir(_tmp)
+    try:
+        Path("perfumes_manifest.txt").write_text(
+            "https://www.fragrantica.com/perfume/B/One-1.html\nhttps://www.fragrantica.com/perfume/B/Two-2.html\n")
+        _real = ps.BrowserClient
+        ps.BrowserClient = _Browser
+        try:
+            assert ps.main(["--db", "p.sqlite"]) == 0
+        finally:
+            ps.BrowserClient = _real
+        _rows = sqlite3.connect("p.sqlite").execute("select count(*) from perfumes").fetchone()[0]
+        assert _rows == 1, _rows   # only the complete page was recorded
+        assert Path("perfumes_incomplete.txt").read_text().strip().endswith("One-1.html")
+    finally:
+        os.chdir(_old)
+print("pages with missing vote cards are skipped, listed and retried later OK")
