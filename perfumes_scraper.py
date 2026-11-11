@@ -273,15 +273,19 @@ def page_charts(tree):
 def heading_brand(tree):
     """The brand as the page's heading spells it, for pages whose URL carries an older brand
     name ("A Lab on Fire" in the URL, "What We Do Is Secret" on the page): the designer link
-    whose text appears in the h1. None if there is none."""
+    whose whole text ends the h1 ("<perfume> <brand> for women"). The link's text may be split
+    over several nodes ("Новая Заря (Novaya Zarya – The New Dawn)"), so it is read as a whole.
+    None if there is none."""
     heading = " ".join(" ".join(tree.xpath("(//h1)[1]//text()")).split())
-    for href_text in tree.xpath(
-        "//a[contains(@href, '/designers/')][substring(@href, string-length(@href) - 4) = '.html']//text()"
+    heading = re.sub(r"\s+for (?:women and men|women|men)$", "", heading)
+    best = None
+    for link in tree.xpath(
+        "//a[contains(@href, '/designers/')][substring(@href, string-length(@href) - 4) = '.html']"
     ):
-        text = " ".join(href_text.split())
-        if text and text in heading:
-            return text
-    return None
+        text = " ".join(link.text_content().split())
+        if text and heading.endswith(text) and (best is None or len(text) > len(best)):
+            best = text
+    return best
 
 
 def check_page(tree, url):
@@ -364,7 +368,9 @@ def scrape_perfume(client, url):
         raise IncompletePageError("{}; cards when read: {}".format(", ".join(problems), card_summary(tree)), tree)
 
     names = page_name_candidates(tree)
-    page_brand = find_name(names, url_brand) or heading_brand(tree)
+    # The page's own designer link is the authority on the brand: the URL spelling can be an older
+    # name or a transliteration ("Novaya-Zarya" for "Новая Заря (Novaya Zarya – The New Dawn)").
+    page_brand = heading_brand(tree) or find_name(names, url_brand)
     page_title_name = find_name(names, url_title)
     brand = page_brand or url_brand
 

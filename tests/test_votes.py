@@ -95,3 +95,16 @@ assert ps.page_perfumers(named) == [
     {"name": "David Apel", "slug": "David_Apel"}, {"name": "Pierre Negrin", "slug": "Pierre_Negrin"}]
 assert ps.page_perfumers(html.fromstring("<html><body><a href='/noses/'>Perfumers</a></body></html>")) == []
 print("perfumers read from the page OK")
+
+# a brand whose link text is split over several nodes, and holds punctuation and another script
+split_brand = html.fromstring(
+    "<html><body><h1>Aqua Lumiere Новая Заря (Novaya Zarya – The New Dawn) <small>for men</small></h1>"
+    "<a href='/designers/'>Designers</a>"
+    "<a href='https://www.fragrantica.com/designers/Novaa-Zara.html'><span>Новая Заря (Novaya Zarya</span> – The New Dawn)</a>"
+    "<a href='/designers/Dior.html'>Dior</a></body></html>")
+assert ps.heading_brand(split_brand) == "Новая Заря (Novaya Zarya – The New Dawn)", ps.heading_brand(split_brand)
+# a popular designer named elsewhere on the page must not be mistaken for the brand
+assert ps.heading_brand(html.fromstring(
+    "<html><body><h1>Miss Dior Blooming Chanel <small>for women</small></h1>"
+    "<a href='/designers/Dior.html'>Dior</a><a href='/designers/Chanel.html'>Chanel</a></body></html>")) == "Chanel"
+print("brand read whole from the heading OK")
