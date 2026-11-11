@@ -11,6 +11,7 @@ from lxml import html
 import browser_client
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import PerfumesDBHelper
+from urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/perfumes")
 INCOMPLETE_FILE = "perfumes_incomplete.txt"   # url and reason, one per line
@@ -433,10 +434,9 @@ def main(argv=None):
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        with open("perfumes_manifest.txt", encoding="utf-8") as manifest:
-            perfume_urls = list(dict.fromkeys(
-                line.strip() for line in manifest if line.strip()
-            ))
+        perfume_urls = read_manifest("perfumes_manifest.txt")
+        if not perfume_urls:
+            raise FileNotFoundError("perfumes_manifest.txt is missing or empty; run perfumes_extract_manifest.py")
         db.migrate_legacy_progress(perfume_urls)
         completed = db.completed_urls()
     except (OSError, ValueError, RuntimeError) as exc:

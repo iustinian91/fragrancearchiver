@@ -14,6 +14,8 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 
+from urls import canonical_url, read_manifest
+
 PAGE_ID = re.compile(r"-(\d+)\.html?$")
 IMAGE_ID = re.compile(r"^o\.(\d+)\.")
 FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gender", "when_to_wear", "perfumers")
@@ -72,8 +74,8 @@ def main():
     args = ap.parse_args()
 
     rows, progress = load(args.db)
-    with open(args.manifest, encoding="utf-8") as manifest:
-        urls = list(dict.fromkeys(line.strip() for line in manifest if line.strip()))
+    urls = read_manifest(args.manifest)
+    progress = None if progress is None else {canonical_url(u) for u in progress}
     problems = 0
     print("Rows: {}   Manifest URLs: {}".format(len(rows), len(urls)))
 

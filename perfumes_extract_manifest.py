@@ -8,6 +8,8 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
+from urls import canonical_url, read_manifest, too_small_to_replace
+
 import browser_client
 from browser_client import (
     BASE_URL,
@@ -24,6 +26,7 @@ EMPTY_PATH = Path("perfumes_manifest.empty.txt")  # designer pages that stayed e
 SHORT_PATH = Path("perfumes_manifest.short.txt")  # designers with fewer perfumes than last time: url, now, before
 SHORT_SHARE = 0.9     # a designer with under 90% of the perfumes it had in the previous manifest ...
 SHORT_MIN_GAP = 3     # ... and at least 3 fewer, is fetched once more, and recorded if still short
+NEW_PATH = Path("perfumes_manifest.new.txt")      # a crawl too small to replace the manifest is kept here
 LEGACY_TEMP_PATH = Path("manifest.txt.tmp")
 LEGACY_OUTPUT_PATH = Path("manifest.txt")
 
@@ -60,8 +63,7 @@ def load_progress():
     migrate_legacy_manifest()
     seen = set()
     if TEMP_OUTPUT_PATH.exists():
-        with TEMP_OUTPUT_PATH.open(encoding="utf-8") as manifest:
-            seen = {line.strip() for line in manifest if line.strip()}
+        seen = set(read_manifest(TEMP_OUTPUT_PATH))
 
     if STATE_PATH.exists():
         with STATE_PATH.open(encoding="utf-8") as state_file:
@@ -172,6 +174,15 @@ def fetch_designer_perfumes(client, brand_url, counts=None):
     return [], "empty"
 
 
+def write_canonical(path):
+    """Rewrite a manifest so every URL has its canonical spelling and appears once (a resumed
+    legacy file may hold http:// lines)."""
+    urls = read_manifest(path)
+    temporary = path.with_name(path.name + ".canonical")
+    temporary.write_text("".join(url + "\n" for url in urls), encoding="utf-8")
+    temporary.replace(path)
+
+
 def print_summary(stats):
     """One line per country crawled in this run, then where the empty and short lists are."""
     if not stats:
@@ -196,6 +207,9 @@ def main(argv=None):
         "--designers", type=int, metavar="N",
         help="crawl only the first N designers of each country (for trial runs)",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="replace {} even if the new list is under 90%% the size of the old one".format(OUTPUT_PATH))
     browser_client.add_browser_arguments(parser)
     args = parser.parse_args(argv)
     browser_client.apply_browser_arguments(args)
@@ -278,6 +292,16 @@ def main(argv=None):
             print("No perfume URLs were found; the existing manifest was not replaced.")
             return 1
 
+        old_total = len(read_manifest(OUTPUT_PATH))
+        if too_small_to_replace(len(seen), old_total, args.force):
+            # A trial run (--country, --designers) or a crawl that missed part of the site.
+            TEMP_OUTPUT_PATH.replace(NEW_PATH)
+            STATE_PATH.unlink(missing_ok=True)
+            print("NOT replaced: {} found {} URLs but the existing {} has {}. The new list is in {}; "
+                  "if it is right, rename it over {} or rerun with --force.".format(
+                      "this crawl", len(seen), OUTPUT_PATH, old_total, NEW_PATH, OUTPUT_PATH))
+            return 1
+        write_canonical(TEMP_OUTPUT_PATH)
         TEMP_OUTPUT_PATH.replace(OUTPUT_PATH)
         STATE_PATH.unlink(missing_ok=True)
         print("Completed: saved {} unique perfume URLs to {}.".format(len(seen), OUTPUT_PATH))

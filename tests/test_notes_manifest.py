@@ -28,3 +28,32 @@ assert not any("evil" in u or "designers" in u or u.endswith("/notes/") for u in
 # the old selector finds nothing on this page, which is why it had to change
 assert tree.xpath("//div[@class='notebox']/a/@href") == []
 print("notes index links OK")
+
+
+# ---- canonical URLs, and the guard against replacing a manifest with a much smaller list ----
+import os  # noqa: E402
+import tempfile  # noqa: E402
+
+import urls as u  # noqa: E402
+
+assert u.canonical_url("http://www.fragrantica.com/notes/Bergamot-75.html?x=1#y") == "https://www.fragrantica.com/notes/Bergamot-75.html"
+assert u.canonical_url("https://fragrantica.com/perfume/A/B-1.html") == "https://www.fragrantica.com/perfume/A/B-1.html"
+assert u.canonical_url("https://example.com/a") == "https://example.com/a"
+assert u.too_small_to_replace(5, 10) and not u.too_small_to_replace(9, 10) and not u.too_small_to_replace(5, 0)
+assert not u.too_small_to_replace(5, 10, force=True)
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    old = "".join("{}/notes/N{}-{}.html\n".format(BASE_URL, i, i) for i in range(10))
+    Path("notes_manifest.txt").write_text(old)
+
+    class OneNote:
+        def __enter__(s): return s
+        def __exit__(s, *a): return False
+        def fetch_tree(s, url): return html.fromstring('<a href="/notes/N1-1.html">x</a>')
+
+    nem.BrowserClient = OneNote
+    assert nem.main([]) == 1 and Path("notes_manifest.txt").read_text() == old
+    assert Path("notes_manifest.new.txt").read_text().split() == [BASE_URL + "/notes/N1-1.html"]
+    assert nem.main(["--force"]) == 0 and len(Path("notes_manifest.txt").read_text().split()) == 1
+print("notes manifest guard OK")

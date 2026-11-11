@@ -78,3 +78,46 @@ with tempfile.TemporaryDirectory() as tmp:
     assert len(rows) == 5 + 4 + 5 + 6 and all(0 <= r[4] <= 1 for r in rows)
     assert conn.execute("SELECT COUNT(*) FROM notes WHERE kind IN ('top','middle','base')").fetchone()[0] == 3
     print("scrape -> export -> clean -> app.db OK ({} vote rows)".format(len(rows)))
+
+
+# ---- the progress ledger: old http:// entries are rewritten, not scraped again ----
+import sqlite3  # noqa: E402
+import tempfile as _tf  # noqa: E402
+
+import db_helper  # noqa: E402
+
+with _tf.TemporaryDirectory() as tmp:
+    path = os.path.join(tmp, "x.sqlite")
+    helper = db_helper.PerfumesDBHelper(path)
+    helper.setup()
+    helper.conn.execute("INSERT INTO scrape_progress (url, completed_at) VALUES (?, ?)",
+                        ("http://www.fragrantica.com/perfume/A/B-1.html", "2026-01-01 00:00:00"))
+    helper.conn.commit()
+    helper.close()
+    helper = db_helper.PerfumesDBHelper(path)
+    helper.setup()
+    assert helper.completed_urls() == {"https://www.fragrantica.com/perfume/A/B-1.html"}
+    assert helper.conn.execute("SELECT completed_at FROM scrape_progress").fetchone()[0] == "2026-01-01 00:00:00"
+    helper.close()
+print("ledger URLs made canonical OK")
+
+# ---- rows from an older crawl are reported, since marking them complete keeps them as they are ----
+import contextlib  # noqa: E402
+import io  # noqa: E402
+
+with _tf.TemporaryDirectory() as tmp:
+    path = os.path.join(tmp, "old.sqlite")
+    legacy = sqlite3.connect(path)
+    legacy.execute("CREATE TABLE perfumes (brand TEXT, perfume TEXT, launch_year TEXT, main_accords TEXT, notes TEXT, longevity TEXT, sillage TEXT)")
+    legacy.execute("INSERT INTO perfumes VALUES ('A', '{\"image\": \"o.1.jpg\"}', '2000', 'null', 'null', 'null', 'null')")
+    legacy.commit()
+    legacy.close()
+    helper = db_helper.PerfumesDBHelper(path)
+    helper.setup()
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        helper.migrate_legacy_progress(["https://www.fragrantica.com/perfume/A/B-1.html", "https://www.fragrantica.com/perfume/A/C-2.html"])
+    assert "WARNING: 1 rows come from an older crawl" in out.getvalue(), out.getvalue()
+    assert helper.completed_urls() == {"https://www.fragrantica.com/perfume/A/B-1.html"}
+    helper.close()
+print("older-crawl rows are reported OK")

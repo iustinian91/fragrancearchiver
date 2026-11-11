@@ -4,6 +4,8 @@ import json
 import re
 import sqlite3
 
+from urls import canonical_url
+
 
 class _TableDB:
     """A SQLite file holding one scraper table and its completed URL ledger."""
@@ -33,7 +35,19 @@ class _TableDB:
             )
             """
         )
+        self._canonicalize_progress()
         self.conn.commit()
+
+    def _canonicalize_progress(self):
+        """Rewrite ledger URLs written as http:// (older crawls) to the canonical https:// form,
+        keeping when each was completed, so the same page is not scraped a second time."""
+        stale = [url for (url,) in self.conn.execute("SELECT url FROM scrape_progress")
+                 if canonical_url(url) != url]
+        for url in stale:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO scrape_progress (url, completed_at) "
+                "SELECT ?, completed_at FROM scrape_progress WHERE url = ?", (canonical_url(url), url))
+            self.conn.execute("DELETE FROM scrape_progress WHERE url = ?", (url,))
 
     def add_record(self, args):
         """Insert a data row (legacy helper; new scrapers should use add_record_for_url)."""
@@ -58,7 +72,7 @@ class _TableDB:
             )
             self.conn.execute(
                 "INSERT OR REPLACE INTO scrape_progress (url) VALUES (?)",
-                (url,),
+                (canonical_url(url),),
             )
 
     def completed_urls(self):
@@ -143,7 +157,9 @@ class PerfumesDBHelper(_TableDB):
             if match:
                 ids.add(match.group(1))
         if not ids:
-            return super().migrate_legacy_progress(manifest_urls)
+            marked = super().migrate_legacy_progress(manifest_urls)
+            self._warn_legacy_rows()
+            return marked
         done = [url for url in dict.fromkeys(manifest_urls) if _page_id(url) in ids]
         with self.conn:
             self.conn.executemany(
@@ -157,7 +173,19 @@ class PerfumesDBHelper(_TableDB):
             ),
             flush=True,
         )
+        self._warn_legacy_rows()
         return len(done)
+
+    def _warn_legacy_rows(self):
+        """Rows from an older crawl have no gender, when-to-wear or perfumers (SQL NULL, where a
+        current row stores the text 'null'); once marked complete they are never scraped again."""
+        old = self.conn.execute("SELECT COUNT(*) FROM perfumes WHERE when_to_wear IS NULL").fetchone()[0]
+        if old:
+            print(
+                "WARNING: {} rows come from an older crawl and have no gender, when-to-wear or "
+                "perfumers. They are now marked complete and will not be scraped again. For the "
+                "full data, start from an empty database (--db perfumes_new.sqlite).".format(old),
+                flush=True)
 
 
 class NotesDBHelper(_TableDB):

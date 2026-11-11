@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlsplit
 import browser_client
 from browser_client import FETCH_ERRORS, BrowserClient
 from db_helper import NotesDBHelper
+from urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/notes")
 # The note's own photos: .../mdimg/sastojci/t.75.jpg, t2.75.jpg, t3.75.jpg (up to three per note).
@@ -63,10 +64,9 @@ def main(argv=None):
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        with open("notes_manifest.txt", encoding="utf-8") as manifest:
-            note_urls = list(dict.fromkeys(
-                line.strip() for line in manifest if line.strip()
-            ))
+        note_urls = read_manifest("notes_manifest.txt")
+        if not note_urls:
+            raise FileNotFoundError("notes_manifest.txt is missing or empty; run notes_extract_manifest.py")
         db.migrate_legacy_progress(note_urls)
         completed = db.completed_urls()
     except (OSError, ValueError, RuntimeError) as exc:

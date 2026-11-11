@@ -85,12 +85,12 @@ class Fake:
             raise RuntimeError("HTTP 403")
         return s.pages[url]
 
-def run(client):
+def run(client, argv=None):
     class FB:
         def __enter__(s): return client
         def __exit__(s, *a): return False
     em.BrowserClient = FB
-    return em.main()
+    return em.main(argv)
 
 def d(name): return "/designers/{}.html".format(name)
 def p(brand, i): return "/perfume/{}/P{}-{}.html".format(brand, i, i)
@@ -150,10 +150,10 @@ class Queue(Fake):
         return pages.pop(0) if len(pages) > 1 else pages[0]
 
 
-def run_quiet(client):
+def run_quiet(client, argv=None):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        code = run(client)
+        code = run(client, argv)
     return code, out.getvalue()
 
 
@@ -174,7 +174,7 @@ with tempfile.TemporaryDirectory() as tmp:
     Path("perfumes_manifest.txt").write_text("".join(B + p("A", i) + "\n" for i in range(10)))
     full, short = [page([p("A", i) for i in range(10)])], [page([p("A", 1), p("A", 2)])]
     c = Queue({country: [page([d("A")])], B + d("A"): short + full})         # first load is partial
-    code, out = run_quiet(c)
+    code, out = run_quiet(c, ["--force"])
     assert code == 0 and c.seen.count(B + d("A")) == 2 and not Path("perfumes_manifest.short.txt").exists()
     assert len(Path("perfumes_manifest.txt").read_text().split()) == 10, "the longer list wins"
     assert "[Short]" in out and "TestLand" in out and "Summary of this run" in out
@@ -185,7 +185,7 @@ with tempfile.TemporaryDirectory() as tmp:
     Path("perfumes_manifest.txt").write_text("".join(B + p("A", i) + "\n" for i in range(10)))
     c = Queue({country: [page([d("A"), d("B")])], B + d("A"): [page([p("A", 1), p("A", 2)])],
                B + d("B"): [page([p("B", 3)])]})
-    code, out = run_quiet(c)
+    code, out = run_quiet(c, ["--force"])
     assert code == 0 and c.seen.count(B + d("A")) == 2
     assert c.seen.count(B + d("B")) == 1, "a designer with no previous count is fetched once"
     assert Path("perfumes_manifest.short.txt").read_text().split("\t") == [B + d("A"), "2", "10\n"]
@@ -195,3 +195,30 @@ with tempfile.TemporaryDirectory() as tmp:
 # the rule itself: small drops and small designers are not flagged
 assert not em.is_short(9, 10) and not em.is_short(1, 3) and em.is_short(2, 10) and not em.is_short(8, 10)
 print("short-list rule OK")
+
+
+# ---- a crawl much smaller than the existing manifest must not replace it ----
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    old = "".join("http://www.fragrantica.com/perfume/A/P{0}-{0}.html\n".format(i) for i in range(10))
+    Path("perfumes_manifest.txt").write_text(old)
+    pages = {country: page([d("A")]), B + d("A"): page([p("A", 1), p("A", 2)])}
+    code, out = run_quiet(Fake(pages))
+    assert code == 1 and "NOT replaced" in out
+    assert Path("perfumes_manifest.txt").read_text() == old, "the good manifest is untouched"
+    assert len(Path("perfumes_manifest.new.txt").read_text().split()) == 2
+    assert not Path("perfumes_manifest.state.json").exists() and not Path("perfumes_manifest.txt.tmp").exists()
+    Path("perfumes_manifest.new.txt").unlink()
+    assert run_quiet(Fake(pages), ["--force"])[0] == 0
+    assert len(Path("perfumes_manifest.txt").read_text().split()) == 2
+    print("a small crawl cannot replace the manifest unless forced OK")
+
+# a resumed legacy file with http:// lines ends up canonical and without repeats
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    Path("perfumes_manifest.txt.tmp").write_text("http://www.fragrantica.com/perfume/A/P1-1.html\n")
+    Path("perfumes_manifest.state.json").write_text('{"country_index": 0, "brand_url": null}')
+    pages = {country: page([d("A")]), B + d("A"): page([p("A", 1), p("A", 2)])}
+    assert run_quiet(Fake(pages))[0] == 0
+    assert Path("perfumes_manifest.txt").read_text().split() == [B + p("A", 1), B + p("A", 2)]
+    print("http:// lines from an older run become canonical and are not repeated OK")
