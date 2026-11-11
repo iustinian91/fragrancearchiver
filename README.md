@@ -168,7 +168,7 @@ page through scrape, export, clean and the app database.
 
 ### Blocking ads (optional)
 
-`--block-ads` (on `perfumes_scraper.py`, `notes_scraper.py` and `smoke_test.py`) aborts every
+`--block-ads` (on `perfumes_scraper.py`, `notes_scraper.py` and `dry_test.py`) aborts every
 request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare, so the ~45 ad,
 tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HOSTS` in
 `browser_client.py`. When the browser closes it prints how many requests were allowed and
@@ -176,7 +176,7 @@ blocked and the busiest blocked hosts; if vote charts come back empty with it on
 list for a host the page needs and add it. It also drops font and video requests to the allowed hosts, which the scraper never reads
 (page images stay, because without them the page is shorter and the lazy vote cards are reached
 differently). It is off by default. To see whether it helps,
-run the smoke test with and without it. It does not remove the site's own sign-up popup
+run the dry test with and without it. It does not remove the site's own sign-up popup
 (`#registration-nudge-overlay`); the scroll unlock handles that.
 
 ### Rebuilding the database
@@ -190,22 +190,22 @@ the names, so they change wherever a name changes.
 
 ## Trying everything on a small sample first
 
-Before a full crawl, run the live smoke test:
+Before a full crawl, run the live dry test:
 
 ```bash
-python smoke_test.py            # about 15 minutes, a few dozen page loads
-python smoke_test.py --screenshots 5 --designers 2 --notes 5   # smaller, with chart screenshots
+python dry_test.py            # about 15 minutes, a few dozen page loads
+python dry_test.py --screenshots 5 --designers 2 --notes 5   # smaller, with chart screenshots
 ```
 
-It runs every stage against the real site in a new `smoke_run_<time>/` folder, with its own
+It runs every stage against the real site in a new `dry_run_<time>/` folder, with its own
 databases, manifests and images: the URL crawl for one country (3 designers), the notes
-index, 15 hand-picked perfume pages from `smoke_urls.txt` (apostrophes, accents, very old
+index, 15 hand-picked perfume pages from `dry_urls.txt` (apostrophes, accents, very old
 ids, no pyramid, few votes, ...) plus 3 from the crawl, 8 note pages, then re-runs, export,
 clean and the `app.db` build. Your real data is never written to (the report proves it with a
 before/after fingerprint) and the full scrapers are never started.
 
 Each stored value is compared with what the live page displays, read by a separate piece of
-JavaScript (`smoke_oracle.py`) instead of the scraper's own parsing: title, brand and year,
+JavaScript (`dry_oracle.py`) instead of the scraper's own parsing: title, brand and year,
 main accords, top/middle/base notes, and every vote chart (displayed categories and counts
 against the stored counts, then the normalized shares against both the counts and the bars the
 page draws). Images are checked for a matching URL and for a file that is non-empty and
@@ -216,9 +216,9 @@ page in `report.md` (UNAVAILABLE means the page shows nothing there and nothing 
 The run stops at the first HTTP 429/403, challenge page or list that never finishes loading
 and reports it as BLOCKED; it does not try to get around it. Pages that fail a check are saved
 under `failures/` so selectors can be fixed from the real HTML. Exit status: 0 all passed,
-1 a check failed, 2 blocked. `python tests/test_smoke.py` tests the comparison logic offline.
-Once the curated pages pass, `python smoke_test.py --random 10` tests 10 pages picked at random from `perfumes_manifest.txt` (it prints the seed; `--seed N` repeats the same sample). A random page that fails is a new case: add it to `smoke_urls.txt`.
-After a failed run, `python smoke_test.py --only-failed smoke_run_<time>` re-tests just the perfume pages that failed there (12 pages instead of the whole sample, and no manifest or notes crawl); `--urls FILE` does the same for a list of your own.
+1 a check failed, 2 blocked. `python tests/test_dry.py` tests the comparison logic offline.
+Once the curated pages pass, `python dry_test.py --random 10` tests 10 pages picked at random from `perfumes_manifest.txt` (it prints the seed; `--seed N` repeats the same sample). A random page that fails is a new case: add it to `dry_urls.txt`.
+After a failed run, `python dry_test.py --only-failed dry_run_<time>` re-tests just the perfume pages that failed there (12 pages instead of the whole sample, and no manifest or notes crawl); `--urls FILE` does the same for a list of your own.
 `python tests/test_failure_handling.py` checks that things fail safely: image downloads are atomic and validated (a 404 image is skipped, not fatal), blank pages are refused and pages missing vote cards are skipped and kept for diagnosis, a Cloudflare page that clears itself is waited out, and a failed `app.db` build keeps the previous file.
 
 ## Pipeline
@@ -292,4 +292,4 @@ image's file name. The chart levels live in one place, `charts.py`.
   is saved; wait an hour or more and rerun.
 - **Browser profile:** the crawlers keep the browser's cookies in `browser_profile/` between runs, so
   a challenge cleared once stays cleared. `--profile DIR` picks another folder and `--no-profile`
-  starts fresh. The smoke test always starts fresh.
+  starts fresh. The dry test always starts fresh.

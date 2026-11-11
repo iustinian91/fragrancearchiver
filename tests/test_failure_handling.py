@@ -300,7 +300,7 @@ try:
     assert bc.PROFILE_DIR == ""
     bc.PROFILE_DIR = ""
     bc.apply_browser_arguments(_p.parse_args([]))
-    assert bc.PROFILE_DIR == "", "the smoke test's fresh browser is kept"
+    assert bc.PROFILE_DIR == "", "the dry test's fresh browser is kept"
 finally:
     bc.PROFILE_DIR, bc.BLOCK_ADS = _old
 print("slowdown, stop after three blocks, and profile options OK")

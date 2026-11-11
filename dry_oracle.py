@@ -1,9 +1,9 @@
-"""Independent readers and comparisons for smoke_test.py.
+"""Independent readers and comparisons for dry_test.py.
 
 The scrapers read a page's HTML with lxml. The "oracle" here reads what the browser actually
 shows (rendered text, visible bar widths) with its own JavaScript, so a scraper bug cannot hide
 behind the same bug in the check. Everything that decides PASS/FAIL is a plain function over
-dicts, so it can be tested without a browser (tests/test_smoke.py).
+dicts, so it can be tested without a browser (tests/test_dry.py).
 """
 
 import re

@@ -1,4 +1,4 @@
-# Perfume pages for smoke_test.py, chosen to cover the cases that have gone wrong before.
+# Perfume pages for dry_test.py, chosen to cover the cases that have gone wrong before.
 # Format: <path on fragrantica.com>   # why it is here
 /perfume/Tom-Ford/Black-Orchid-1018.html                           # popular: every chart and note group filled
 /perfume/Creed/Aventus-9828.html                                   # popular men's fragrance

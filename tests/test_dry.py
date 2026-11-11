@@ -1,5 +1,5 @@
-"""Tests for the comparison logic behind smoke_test.py, against a real rendered page (no browser).
-Run with: python tests/test_smoke.py"""
+"""Tests for the comparison logic behind dry_test.py, against a real rendered page (no browser).
+Run with: python tests/test_dry.py"""
 import copy
 import json
 import os
@@ -23,7 +23,7 @@ except ImportError:
 
 import clean  # noqa: E402
 import perfumes_scraper as ps  # noqa: E402
-import smoke_oracle as so  # noqa: E402
+import dry_oracle as so  # noqa: E402
 
 shown = json.loads((ROOT / "tests/fixtures/oracle_black_orchid.json").read_text())
 tree = html.fromstring((ROOT / "tests/fixtures/performance_cards_black_orchid.html").read_text(encoding="utf-8"))
@@ -145,7 +145,7 @@ import json as _json  # noqa: E402
 import tempfile as _tempfile  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
 
-import smoke_test as st  # noqa: E402
+import dry_test as st  # noqa: E402
 
 with _tempfile.TemporaryDirectory() as _tmp:
     _run = _Path(_tmp)

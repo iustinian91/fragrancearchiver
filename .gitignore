@@ -28,6 +28,7 @@ perfumes_clean.json
 *.db-shm
 *.sqlite-wal
 *.sqlite-shm
+dry_run*/
 smoke_run*/
 perfumes_manifest.empty.txt
 app.db.building*

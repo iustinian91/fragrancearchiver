@@ -181,7 +181,7 @@ def add_browser_arguments(parser):
 
 def apply_browser_arguments(args):
     """Turn those options into the module settings BrowserClient reads. Settings a caller made
-    first (the smoke test) are kept."""
+    first (the dry test) are kept."""
     global BLOCK_ADS, PROFILE_DIR
     BLOCK_ADS = BLOCK_ADS or args.block_ads
     if PROFILE_DIR is None:

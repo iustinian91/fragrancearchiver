@@ -1,18 +1,18 @@
 """Small live test of every scraper, run before a full extraction.
 
-    python smoke_test.py [--country Thailand] [--designers 3] [--notes 8] [--screenshots]
-    python smoke_test.py --only-failed smoke_run_<earlier time>      # re-test just the pages that failed
-    python smoke_test.py --urls my_urls.txt                          # re-test only these perfume pages
-    python smoke_test.py --random 10 [--seed 123]                    # 10 pages picked at random from your manifest
+    python dry_test.py [--country Thailand] [--designers 3] [--notes 8] [--screenshots]
+    python dry_test.py --only-failed dry_run_<earlier time>      # re-test just the pages that failed
+    python dry_test.py --urls my_urls.txt                          # re-test only these perfume pages
+    python dry_test.py --random 10 [--seed 123]                    # 10 pages picked at random from your manifest
 
 It uses the real browser and the live site, but only a handful of pages, and writes everything
-into its own new folder (default smoke_run_<time>/): separate databases, manifests and images.
+into its own new folder (default dry_run_<time>/): separate databases, manifests and images.
 Your real perfumes.sqlite, notes.sqlite, app.db and manifests are never opened for writing, and the
 full scrapers are never started; their entry points are called with trial-run limits. A
 fingerprint of your real data before and after proves it.
 
 Each field is compared with what the live page displays, read by an independent reader
-(smoke_oracle.py) rather than by the scraper's own parsing. The result is a PASS / FAIL /
+(dry_oracle.py) rather than by the scraper's own parsing. The result is a PASS / FAIL /
 UNAVAILABLE line per field, per page (UNAVAILABLE = the page shows nothing and nothing was
 stored). The run stops at the first sign of blocking (HTTP 429/403, a challenge page, a list
 that never stops loading) and does not try to get around it.
@@ -36,7 +36,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
-import smoke_oracle as so  # noqa: E402
+import dry_oracle as so  # noqa: E402
 import browser_client  # noqa: E402
 from browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
 from urls import canonical_url  # noqa: E402
@@ -114,7 +114,7 @@ def read_urls(path):
 
 def curated_urls():
     urls = []
-    for line in (REPO / "smoke_urls.txt").read_text(encoding="utf-8").splitlines():
+    for line in (REPO / "dry_urls.txt").read_text(encoding="utf-8").splitlines():
         line = line.split("#")[0].strip()
         if line:
             urls.append(BASE_URL + line)
@@ -252,10 +252,10 @@ def idempotence(report, stage, main, argv, db, table, workdir, manifest, urls):
 
 
 def failed_urls(previous_run):
-    """Perfume page URLs that had a FAIL in an earlier smoke run's report, in the order tested."""
+    """Perfume page URLs that had a FAIL in an earlier dry run's report, in the order tested."""
     previous = Path(previous_run)
     if not (previous / "report.json").is_file() or not (previous / "perfumes_manifest.txt").is_file():
-        runs = sorted(p.name for p in Path(".").glob("smoke_run_*") if (p / "report.json").is_file()
+        runs = sorted(p.name for p in (p for pattern in ("dry_run_*", "smoke_run_*") for p in Path(".").glob(pattern)) if (p / "report.json").is_file()
                       and (p / "perfumes_manifest.txt").is_file())
         raise SystemExit(
             "No usable earlier run at '{}' (it needs report.json and perfumes_manifest.txt).\n"
@@ -444,7 +444,7 @@ def write_report(report, workdir, started):
     counts = report.counts()
     (workdir / "report.json").write_text(json.dumps(
         {"started": started, "counts": counts, "checks": report.rows}, indent=1), encoding="utf-8")
-    lines = ["# Smoke test report", "", "Started {}.  PASS {}  UNAVAILABLE {}  FAIL {}  BLOCKED {}".format(
+    lines = ["# Dry test report", "", "Started {}.  PASS {}  UNAVAILABLE {}  FAIL {}  BLOCKED {}".format(
         started, counts[PASS], counts[UNAVAILABLE], counts[FAIL], counts[BLOCKED]), ""]
     stage = None
     for r in report.rows:
@@ -461,13 +461,13 @@ def main(argv=None):
     parser.add_argument("--designers", type=int, default=3, help="designers to crawl in it (default %(default)s)")
     parser.add_argument("--notes", type=int, default=8, help="note pages to scrape (default %(default)s)")
     parser.add_argument("--from-crawl", type=int, default=3, dest="from_crawl",
-                        help="perfumes taken from the crawl itself, on top of smoke_urls.txt (default %(default)s)")
+                        help="perfumes taken from the crawl itself, on top of dry_urls.txt (default %(default)s)")
     parser.add_argument("--screenshots", type=int, default=0, metavar="N",
                         help="save chart screenshots for the first N perfume pages, for a visual check")
     parser.add_argument("--skip-oracle", action="store_true",
                         help="skip the comparison with the live page (halves the requests; weaker test)")
     parser.add_argument("--only-failed", metavar="RUN_FOLDER", dest="only_failed",
-                        help="re-test only the perfume pages that failed in an earlier smoke_run folder")
+                        help="re-test only the perfume pages that failed in an earlier dry_run folder")
     parser.add_argument("--random", type=int, metavar="N",
                         help="test N perfume pages picked at random from perfumes_manifest.txt, "
                              "instead of the curated list; for use once the curated pages pass")
@@ -476,10 +476,10 @@ def main(argv=None):
                         help="re-test only the perfume page URLs listed in FILE (one per line)")
     parser.add_argument("--block-ads", action="store_true", dest="block_ads",
                         help="run the scrapers and the oracle with ad blocking on (compare with a run without it)")
-    parser.add_argument("--workdir", help="new folder for this run (default smoke_run_<time>)")
+    parser.add_argument("--workdir", help="new folder for this run (default dry_run_<time>)")
     args = parser.parse_args(argv)
     browser_client.BLOCK_ADS = args.block_ads
-    browser_client.PROFILE_DIR = ""     # every smoke run starts with a fresh browser
+    browser_client.PROFILE_DIR = ""     # every dry run starts with a fresh browser
     args.only = None
     if args.only_failed:
         args.only = failed_urls(args.only_failed)
@@ -498,14 +498,14 @@ def main(argv=None):
         args.only = [u if u.startswith("http") else "https://www.fragrantica.com" + u for u in args.only if u]
 
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    workdir = Path(args.workdir or "smoke_run_" + datetime.now().strftime("%Y%m%d_%H%M%S")).resolve()
+    workdir = Path(args.workdir or "dry_run_" + datetime.now().strftime("%Y%m%d_%H%M%S")).resolve()
     if workdir == REPO or workdir in REPO.parents or (workdir.exists() and any(workdir.iterdir())):
         print("Refusing to use {}: pick a new or empty folder that is not the project folder.".format(workdir))
         return 1
     workdir.mkdir(parents=True, exist_ok=True)
     before = fingerprint()
     os.chdir(workdir)
-    print("Smoke test in {}\n".format(workdir))
+    print("Dry test in {}\n".format(workdir))
 
     report, outcome = Report(), 0
     try:

@@ -305,7 +305,7 @@ class IncompletePageError(RuntimeError):
         self.tree = tree
 
 
-DEBUG_DIR = None   # set (e.g. by the smoke test) to keep the page exactly as the scraper read it
+DEBUG_DIR = None   # set (e.g. by the dry test) to keep the page exactly as the scraper read it
 
 
 def card_summary(tree):

@@ -1,5 +1,5 @@
 """The levels of each vote chart, in display order. One copy, used by the scraper, clean.py and
-the smoke test, so they cannot drift apart.
+the dry test, so they cannot drift apart.
 
 Longevity and sillage are stored under the original site's names (the redesigned site calls the
 levels very weak..eternal and intimate..enormous; the scraper maps them by position)."""
