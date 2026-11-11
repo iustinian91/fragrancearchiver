@@ -5,10 +5,10 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin
 
-from urls import read_manifest, too_small_to_replace
+from archiver.urls import read_manifest, too_small_to_replace
 
-import browser_client
-from browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, matching_urls
+from archiver import browser_client
+from archiver.browser_client import BASE_URL, FETCH_ERRORS, BrowserClient, matching_urls
 
 OUTPUT_PATH = Path("notes_manifest.txt")
 TEMP_OUTPUT_PATH = Path("notes_manifest.txt.tmp")

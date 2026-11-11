@@ -13,7 +13,7 @@ from lxml import html
 from patchright.sync_api import Error as PatchrightError
 from patchright.sync_api import sync_playwright
 
-from urls import BASE_URL, SITE_HOSTS, canonical_url  # noqa: F401  (re-exported for the crawlers)
+from archiver.urls import BASE_URL, SITE_HOSTS, canonical_url  # noqa: F401  (re-exported for the crawlers)
 
 REQUEST_TIMEOUT_MS = 60000
 REQUEST_DELAYS = (2.5, 10.0)

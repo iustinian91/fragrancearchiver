@@ -36,10 +36,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
-import dry_oracle as so  # noqa: E402
-import browser_client  # noqa: E402
-from browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
-from urls import canonical_url  # noqa: E402
+from archiver import dry_oracle as so  # noqa: E402
+from archiver import browser_client  # noqa: E402
+from archiver.browser_client import BASE_URL, UNLOCK_SCROLL_JS, BrowserClient  # noqa: E402
+from archiver.urls import canonical_url  # noqa: E402
 
 PASS, FAIL, UNAVAILABLE, BLOCKED = so.PASS, so.FAIL, so.UNAVAILABLE, "BLOCKED"
 BLOCK_SIGNS = re.compile(r"429|403|challenge|rate limit|still loading items|Cloudflare", re.IGNORECASE)

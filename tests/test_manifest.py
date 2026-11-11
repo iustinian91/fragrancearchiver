@@ -16,7 +16,7 @@ except ImportError:
     stub.Error, stub.sync_playwright = Exception, None
     sys.modules["patchright"], sys.modules["patchright.sync_api"] = types.ModuleType("patchright"), stub
 
-import browser_client as bc  # noqa: E402
+from archiver import browser_client as bc  # noqa: E402
 import perfumes_extract_manifest as em  # noqa: E402
 
 B = "https://www.fragrantica.com"

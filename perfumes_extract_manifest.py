@@ -8,10 +8,10 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from urls import canonical_url, read_manifest, too_small_to_replace
+from archiver.urls import canonical_url, read_manifest, too_small_to_replace
 
-import browser_client
-from browser_client import (
+from archiver import browser_client
+from archiver.browser_client import (
     BASE_URL,
     FETCH_ERRORS,
     BrowserClient,

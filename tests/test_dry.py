@@ -23,7 +23,7 @@ except ImportError:
 
 import clean  # noqa: E402
 import perfumes_scraper as ps  # noqa: E402
-import dry_oracle as so  # noqa: E402
+from archiver import dry_oracle as so  # noqa: E402
 
 shown = json.loads((ROOT / "tests/fixtures/oracle_black_orchid.json").read_text())
 tree = html.fromstring((ROOT / "tests/fixtures/performance_cards_black_orchid.html").read_text(encoding="utf-8"))

@@ -21,7 +21,7 @@ except ImportError:
 
 import build_app_db  # noqa: E402
 import clean  # noqa: E402
-import db_helper  # noqa: E402
+from archiver import db_helper  # noqa: E402
 import export  # noqa: E402
 import perfumes_scraper as ps  # noqa: E402
 
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as tmp:
 import sqlite3  # noqa: E402
 import tempfile as _tf  # noqa: E402
 
-import db_helper  # noqa: E402
+from archiver import db_helper  # noqa: E402
 
 with _tf.TemporaryDirectory() as tmp:
     path = os.path.join(tmp, "x.sqlite")

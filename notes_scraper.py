@@ -6,10 +6,10 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-import browser_client
-from browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
-from db_helper import NotesDBHelper
-from urls import read_manifest
+from archiver import browser_client
+from archiver.browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
+from archiver.db_helper import NotesDBHelper
+from archiver.urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/notes")
 GONE_FILE = "notes_gone.txt"       # pages the site no longer has (HTTP 404/410): url and reason

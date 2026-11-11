@@ -8,11 +8,11 @@ from pathlib import Path
 
 from lxml import html
 
-import browser_client
-from charts import GENDER_KEYS, LONGEVITY_KEYS, SILLAGE_KEYS, WHEN_KEYS
-from browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
-from db_helper import PerfumesDBHelper
-from urls import read_manifest
+from archiver import browser_client
+from archiver.charts import GENDER_KEYS, LONGEVITY_KEYS, SILLAGE_KEYS, WHEN_KEYS
+from archiver.browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
+from archiver.db_helper import PerfumesDBHelper
+from archiver.urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/perfumes")
 MAX_SKIP_ATTEMPTS = 3      # a page that is skipped this many times is left alone until --retry-skipped

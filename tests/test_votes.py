@@ -45,7 +45,7 @@ zero_votes = page_votes(zero)
 assert zero_votes[0] and not any(int(v) for v in zero_votes[0].values()), "no votes at all is stored as zeros"
 
 # ---- scrolling for the vote cards stops at the Reviews heading ----
-import browser_client as bc  # noqa: E402
+from archiver import browser_client as bc  # noqa: E402
 
 
 class Loc:
@@ -161,6 +161,6 @@ print("ad blocking allowlist OK")
 # a count that cannot be read makes the chart missing, not a chart of zeros
 assert clean._chart({"winter": "12", "spring": "oops", "summer": "1", "fall": "2", "day": "3", "night": "4"},
                     {k: k for k in clean.WHEN_KEYS}, clean.WHEN_KEYS) is None
-import charts  # noqa: E402
+from archiver import charts  # noqa: E402
 assert ps.GENDER_KEYS is charts.GENDER_KEYS is clean.GENDER_KEYS and clean.CHART_ORDER is charts.CHART_KEYS
 print("unreadable counts drop the chart; one copy of the chart levels OK")

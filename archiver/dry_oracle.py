@@ -8,7 +8,7 @@ dicts, so it can be tested without a browser (tests/test_dry.py).
 
 import re
 
-from charts import CHART_KEYS
+from archiver.charts import CHART_KEYS
 
 PASS, FAIL, UNAVAILABLE = "PASS", "FAIL", "UNAVAILABLE"
 

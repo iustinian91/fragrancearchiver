@@ -14,7 +14,7 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 
-from urls import canonical_url, read_manifest
+from archiver.urls import canonical_url, read_manifest
 
 PAGE_ID = re.compile(r"-(\d+)\.html?$")
 IMAGE_ID = re.compile(r"^o\.(\d+)\.")

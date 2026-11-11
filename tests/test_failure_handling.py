@@ -18,7 +18,7 @@ except ImportError:  # the checks below never open a browser
     stub.Error, stub.sync_playwright = type("Error", (Exception,), {}), None
     sys.modules["patchright"], sys.modules["patchright.sync_api"] = types.ModuleType("patchright"), stub
 
-import browser_client as bc  # noqa: E402
+from archiver import browser_client as bc  # noqa: E402
 import perfumes_scraper as ps  # noqa: E402
 
 bc.sleep = lambda s: None

@@ -4,7 +4,7 @@ import json
 import re
 import sqlite3
 
-from urls import canonical_url
+from archiver.urls import canonical_url
 
 
 class _TableDB:

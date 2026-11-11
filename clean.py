@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 
-from charts import CHART_KEYS, GENDER_KEYS, WHEN_KEYS
+from archiver.charts import CHART_KEYS, GENDER_KEYS, WHEN_KEYS
 
 WS = re.compile(r"\s+")
 

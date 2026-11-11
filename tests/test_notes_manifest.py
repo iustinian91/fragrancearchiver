@@ -15,7 +15,7 @@ except ImportError:
     sys.modules["patchright"], sys.modules["patchright.sync_api"] = types.ModuleType("patchright"), stub
 
 import notes_extract_manifest as nem  # noqa: E402
-from browser_client import BASE_URL, matching_urls  # noqa: E402
+from archiver.browser_client import BASE_URL, matching_urls  # noqa: E402
 
 # A trimmed copy of the notes index as the redesigned site serves it: the menu's plain /notes/
 # link, 40 note cards (one repeated), a link to another site and one to a designer.
@@ -34,7 +34,7 @@ print("notes index links OK")
 import os  # noqa: E402
 import tempfile  # noqa: E402
 
-import urls as u  # noqa: E402
+from archiver import urls as u  # noqa: E402
 
 assert u.canonical_url("http://www.fragrantica.com/notes/Bergamot-75.html?x=1#y") == "https://www.fragrantica.com/notes/Bergamot-75.html"
 assert u.canonical_url("https://fragrantica.com/perfume/A/B-1.html") == "https://www.fragrantica.com/perfume/A/B-1.html"
