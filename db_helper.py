@@ -50,6 +50,15 @@ class _TableDB:
             )
             """
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skip_attempts (
+                url TEXT PRIMARY KEY,
+                attempts INTEGER NOT NULL,
+                reason TEXT
+            )
+            """
+        )
         self._canonicalize_progress()
         self.conn.commit()
 
@@ -83,6 +92,7 @@ class _TableDB:
                 "INSERT OR REPLACE INTO scrape_progress (url) VALUES (?)",
                 (url,),
             )
+            self.conn.execute("DELETE FROM skip_attempts WHERE url = ?", (url,))
 
     def completed_urls(self):
         """Return every source URL already committed to this database."""
@@ -94,6 +104,25 @@ class _TableDB:
         with self.conn:
             self.conn.execute(
                 "INSERT OR REPLACE INTO gone_urls (url, reason) VALUES (?, ?)", (canonical_url(url), reason))
+
+    def note_skip(self, url, reason):
+        """Count one more failed try at `url`; returns how many tries it has had."""
+        url = canonical_url(url)
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO skip_attempts (url, attempts, reason) VALUES (?, 1, ?) "
+                "ON CONFLICT(url) DO UPDATE SET attempts = attempts + 1, reason = excluded.reason",
+                (url, reason))
+        return self.conn.execute("SELECT attempts FROM skip_attempts WHERE url = ?", (url,)).fetchone()[0]
+
+    def given_up_urls(self, max_attempts):
+        """Pages that failed `max_attempts` times or more: not asked for again until reset."""
+        return {row[0] for row in self.conn.execute(
+            "SELECT url FROM skip_attempts WHERE attempts >= ?", (max_attempts,))}
+
+    def reset_skips(self):
+        with self.conn:
+            self.conn.execute("DELETE FROM skip_attempts")
 
     def gone_urls(self):
         return {row[0] for row in self.conn.execute("SELECT url FROM gone_urls")}

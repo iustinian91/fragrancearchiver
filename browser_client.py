@@ -2,7 +2,7 @@
 
 import os
 import random
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -26,6 +26,8 @@ SERVER_RETRY_WAIT_SECONDS = 30
 MAX_UNREADABLE_IN_A_ROW = 3       # pages in a row that could not be read (not blocked) before a crawl stops
 MISSING_PAGE_STATUSES = (404, 410)
 MAX_CONSECUTIVE_BLOCKS = 3    # a 429 or a challenge this many times in a row ends the run
+BLOCK_WINDOW = 20             # the last 20 fetches are watched ...
+MAX_BLOCKS_IN_WINDOW = 5      # ... and 5 blocks among them end the run, even with successes in between
 MAX_SLOWDOWN = 8.0            # the delays never grow beyond 8 times their normal length
 CLEAN_FETCHES_TO_SPEED_UP = 50   # blocks-free fetches before the delays are halved again
 PROFILE_DIR = None            # browser profile folder: None = not decided yet, "" = fresh browser each run
@@ -195,6 +197,7 @@ class BrowserClient:
 
     slowdown = 1.0         # class defaults, so a client made without __init__ (tests) still works
     block_streak = 0       # blocks in a row, reset by any fetch that went through
+    recent = None          # the last BLOCK_WINDOW fetches: True = blocked
     clean_streak = 0       # fetches since the last block
     _persistent = False
 
@@ -279,10 +282,16 @@ class BrowserClient:
         """Add a small randomized pause before each outbound request, longer after blocks."""
         sleep(random.uniform(*delays) * self.slowdown)
 
+    def _recent(self):
+        if self.recent is None:
+            self.recent = deque(maxlen=BLOCK_WINDOW)
+        return self.recent
+
     def _note_block(self, what):
         """A rate limit or challenge happened: slow down, and stop if it keeps happening."""
         self.block_streak += 1
         self.clean_streak = 0
+        self._recent().append(True)
         self.slowdown = min(self.slowdown * 2, MAX_SLOWDOWN)
         print("Blocked ({}); pauses are now {:g}x as long ({} in a row, limit {}).".format(
             what, self.slowdown, self.block_streak, MAX_CONSECUTIVE_BLOCKS), flush=True)
@@ -290,11 +299,17 @@ class BrowserClient:
             raise TooManyBlocksError(
                 "the site blocked {} requests in a row ({}); stopping so it is not pushed further. "
                 "Progress is saved; wait an hour or more, then rerun".format(self.block_streak, what))
+        if sum(self._recent()) >= MAX_BLOCKS_IN_WINDOW:
+            # A challenge that clears by itself, again and again, never builds a streak.
+            raise TooManyBlocksError(
+                "the site blocked {} of the last {} requests; stopping so it is not pushed further. "
+                "Progress is saved; wait an hour or more, then rerun".format(sum(self._recent()), len(self._recent())))
 
     def _note_ok(self):
         """A request went through: the streak is over, and long quiet stretches speed things up."""
         self.block_streak = 0
         self.clean_streak += 1
+        self._recent().append(False)
         if self.slowdown > 1 and self.clean_streak >= CLEAN_FETCHES_TO_SPEED_UP:
             self.slowdown = max(1.0, self.slowdown / 2)
             self.clean_streak = 0

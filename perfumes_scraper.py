@@ -9,11 +9,13 @@ from pathlib import Path
 from lxml import html
 
 import browser_client
-from browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
+from browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
 from db_helper import PerfumesDBHelper
 from urls import read_manifest
 
 IMAGE_DIR = Path("fragrantica_images/perfumes")
+MAX_SKIP_ATTEMPTS = 3      # a page that is skipped this many times is left alone until --retry-skipped
+MAX_SKIPS_IN_A_ROW = 5     # this many skipped pages in a row stop the crawl: something has changed
 INCOMPLETE_FILE = "perfumes_incomplete.txt"   # url and reason, one per line
 INCOMPLETE_DIR = Path("perfumes_incomplete")   # the pages themselves, as they were read
 GONE_FILE = "perfumes_gone.txt"               # pages the site no longer has (HTTP 404/410): url and reason
@@ -429,12 +431,18 @@ def main(argv=None):
         "--limit", type=int,
         help="scrape at most this many pages; try it with a scratch --db before a full crawl",
     )
+    parser.add_argument(
+        "--retry-skipped", action="store_true",
+        help="try again the pages given up on after %d failed tries" % MAX_SKIP_ATTEMPTS,
+    )
     browser_client.add_browser_arguments(parser)
     args = parser.parse_args(argv)
     browser_client.apply_browser_arguments(args)
 
     db = PerfumesDBHelper(args.db)
     db.setup()
+    if args.retry_skipped:
+        db.reset_skips()
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -451,7 +459,8 @@ def main(argv=None):
 
     total = len(perfume_urls)
     gone = db.gone_urls()
-    pending = [url for url in perfume_urls if url not in completed and url not in gone]
+    given_up = db.given_up_urls(MAX_SKIP_ATTEMPTS)
+    pending = [url for url in perfume_urls if url not in completed and url not in gone and url not in given_up]
     if args.limit is not None:
         pending = pending[:args.limit]
     print(
@@ -460,6 +469,9 @@ def main(argv=None):
         ),
         flush=True,
     )
+    if given_up:
+        print("{} page(s) are skipped: they failed {} times (see {}); use --retry-skipped to try them again.".format(
+            len(given_up), MAX_SKIP_ATTEMPTS, INCOMPLETE_FILE), flush=True)
 
     from_page = {"title": 0, "brand": 0}
     # How many scraped rows actually have each field, so an extraction that stops working
@@ -469,7 +481,7 @@ def main(argv=None):
     )
     scraped = 0
     incomplete, newly_gone, unreadable = [], [], []
-    unreadable_in_a_row = 0
+    skipped_in_a_row = 0
 
     try:
         with BrowserClient() as client:
@@ -483,8 +495,13 @@ def main(argv=None):
                     incomplete.append(url)
                     INCOMPLETE_DIR.mkdir(parents=True, exist_ok=True)
                     (INCOMPLETE_DIR / url.rsplit("/", 1)[-1]).write_bytes(html.tostring(exc.tree))
-                    with open(INCOMPLETE_FILE, "a", encoding="utf-8") as log:
-                        log.write("{}\t{}\n".format(url, exc))
+                    if db.note_skip(url, str(exc)) == 1:    # one log line per page, not one per try
+                        with open(INCOMPLETE_FILE, "a", encoding="utf-8") as log:
+                            log.write("{}\t{}\n".format(url, exc))
+                    skipped_in_a_row += 1
+                    if skipped_in_a_row >= MAX_SKIPS_IN_A_ROW:
+                        raise RuntimeError("{} pages in a row were incomplete (last: {}); the page layout may have changed".format(
+                            skipped_in_a_row, exc))
                     continue
                 except PageGoneError as exc:
                     print("  [gone] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
@@ -498,14 +515,15 @@ def main(argv=None):
                     # is wrong with the site or the browser, so stop then.
                     print("  [unreadable] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     unreadable.append(url)
-                    with open(FAILED_FILE, "a", encoding="utf-8") as log:
-                        log.write("{}\t{}\n".format(url, exc))
-                    unreadable_in_a_row += 1
-                    if unreadable_in_a_row >= MAX_UNREADABLE_IN_A_ROW:
+                    if db.note_skip(url, str(exc)) == 1:
+                        with open(FAILED_FILE, "a", encoding="utf-8") as log:
+                            log.write("{}\t{}\n".format(url, exc))
+                    skipped_in_a_row += 1
+                    if skipped_in_a_row >= MAX_SKIPS_IN_A_ROW:
                         raise RuntimeError("{} pages in a row could not be read (last: {})".format(
-                            unreadable_in_a_row, exc))
+                            skipped_in_a_row, exc))
                     continue
-                unreadable_in_a_row = 0
+                skipped_in_a_row = 0
                 db.add_record_for_url(url, record)
                 completed.add(url)
                 scraped += 1

@@ -392,6 +392,8 @@ class _PageFake:
             raise bc.PageGoneError("HTTP 404 for " + url)
         if what == "blank":
             return html.fromstring("<html><body></body></html>")
+        if what == "incomplete":
+            return _page(("LONGEVITY", "SILLAGE"))      # no gender card
         return _page(("LONGEVITY", "SILLAGE", "GENDER"))
 
     def download_image(self, image_url, destination):
@@ -436,6 +438,60 @@ assert '"image": null' in perfumes[0][0] or '"image": null' in str(perfumes), "a
 assert len(gone_log.splitlines()) == 1, "the gone page is not asked for again on the next run"
 code, code2, out, rows, *_ = _crawl([1, 2], lambda url: "blank" if "N1-" in url else "ok")
 assert code == 0 and rows == 1                                           # one unreadable page is skipped
-code, code2, out, rows, gone_rows, gone_log, failed_log, _ = _crawl([1, 2, 3, 4], lambda url: "blank")
-assert code == 1 and "3 pages in a row could not be read" in out and failed_log.count("\n") >= 3
+code, code2, out, rows, gone_rows, gone_log, failed_log, _ = _crawl([1, 2, 3, 4, 5, 6], lambda url: "blank")
+assert code == 1 and "5 pages in a row could not be read" in out and failed_log.count("\n") >= 5
 print("gone and unreadable pages are skipped and listed; a run of them stops the crawl OK")
+
+
+# ---- a page that stays incomplete is tried 3 times in all, logged once, then left alone ----
+def _runs(behaviour, runs, extra=()):
+    old, tries = os.getcwd(), []
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chdir(tmp)
+        try:
+            Path("perfumes_manifest.txt").write_text("".join(
+                "https://www.fragrantica.com/perfume/B/N{0}-{0}.html\n".format(i) for i in (1, 2, 3)))
+
+            def seen(url):
+                tries.append(url)
+                return behaviour(url)
+
+            class Browser:
+                def __enter__(s): return _PageFake(seen)
+                def __exit__(s, *e): return False
+            real, ps.BrowserClient = ps.BrowserClient, Browser
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    for argv in runs:
+                        ps.main(["--db", "p.sqlite"] + list(argv))
+            finally:
+                ps.BrowserClient = real
+            return tries, Path("perfumes_incomplete.txt").read_text()
+        finally:
+            os.chdir(old)
+
+
+tries, log = _runs(lambda url: "incomplete" if "N2-" in url else "ok", [()] * 5)
+assert sum("N2-2" in t for t in tries) == ps.MAX_SKIP_ATTEMPTS == 3, tries
+assert len(log.splitlines()) == 1, "one log line per page, not one per try"
+tries, log = _runs(lambda url: "incomplete" if "N2-" in url else "ok", [()] * 4 + [("--retry-skipped",)])
+assert sum("N2-2" in t for t in tries) == 4, "--retry-skipped gives a skipped page another go"
+print("incomplete pages are retried 3 times, logged once, and --retry-skipped resets them OK")
+
+# ---- repeated challenges that clear by themselves still stop the run (5 of the last 20 fetches) ----
+c = bc.BrowserClient.__new__(bc.BrowserClient)
+c.slowdown, c.block_streak, c.clean_streak = 1.0, 0, 0
+try:
+    for n in range(10):
+        c._note_block("challenge cleared by itself")      # followed by a good fetch each time
+        c._note_ok()
+    raise AssertionError("expected a stop")
+except bc.TooManyBlocksError as exc:
+    assert "5 of the last" in str(exc), exc
+c = bc.BrowserClient.__new__(bc.BrowserClient)
+c.slowdown, c.block_streak, c.clean_streak = 1.0, 0, 0
+for n in range(60):                                       # one block in every 10 fetches is fine
+    if n % 10 == 0:
+        c._note_block("x")
+    c._note_ok()
+print("a block in every few fetches stops the run; the occasional one does not OK")
