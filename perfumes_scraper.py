@@ -238,18 +238,18 @@ WHEN_CHART = (
 
 
 def _as_votes(rows, keys, by_label):
-    """Vote counts as {key: "count"}, or None unless the chart has every expected level and
-    at least one vote. `by_label` charts must carry exactly `keys` as their labels; the others
+    """Vote counts as {key: "count"}, or None unless the chart has every expected level. A chart
+    nobody has voted on is kept, with every count "0". `by_label` charts must carry exactly `keys` as their labels; the others
     (longevity, sillage) have been renamed by the site, so they are matched by position."""
     if len(rows) != len(keys) or (by_label and tuple(label for label, _ in rows) != keys):
         return None
     votes = {key: str(count) for key, (_, count) in zip(keys, rows)}
-    return votes if any(int(v) for v in votes.values()) else None
+    return votes
 
 
 def page_charts(tree):
     """Vote charts on a perfume page as a dict with the keys longevity, sillage, gender and
-    when_to_wear; each is {level: "votes"} or None (chart missing, unexpected shape, no votes).
+    when_to_wear; each is {level: "votes"} (all "0" when nobody voted) or None (chart missing or unexpected shape).
 
     The site's levels for longevity (very weak..eternal) and sillage (intimate..enormous) are
     stored by position under the original names (poor..very long lasting, soft..enormous), so

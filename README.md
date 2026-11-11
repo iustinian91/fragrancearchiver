@@ -157,6 +157,7 @@ unisex, more male, male) and **when to wear** chart (winter, spring, summer, fal
 night) are stored as vote counts in the `gender` and `when_to_wear` columns. The perfumers named on the page are stored in `perfumers` (name and `/noses/` slug; `perfumers` in `app.db`). Top, middle and
 base notes are stored in `notes`; a page that shows one flat list of notes (no pyramid) is
 stored under `general` and kept in its own `general` group in `perfumes_clean.json` and `app.db`.
+A chart nobody has voted on is stored with every count 0 (and every share 0); a chart missing from the page is `null`.
 A perfume whose page gives no launch year has no year (`null`; shown as unknown). `clean.py` normalizes every chart into
 `{"votes": {...}, "share": {...}}` in `perfumes_clean.json`: for longevity, sillage and gender
 the shares add up to 1; for when to wear a voter can pick several seasons, so each level is

@@ -135,16 +135,17 @@ def _chart(raw, key_map, order, relative_to_max=False):
     """Normalise one vote chart.
 
     Returns {"votes": {level: n}, "share": {level: 0..1}} with the levels in display order, or
-    None if the chart is missing or has no votes. Shares add up to 1 for single-choice charts
-    and are relative to the strongest level when `relative_to_max` is set."""
+    None if the chart is missing. A chart nobody voted on keeps its zero votes and every share is 0.
+    Shares add up to 1 for single-choice charts and are relative to the strongest level when
+    `relative_to_max` is set."""
     counts = _normalize_counts(_json_or_dict(raw), key_map)
     counts = {level: counts[level] for level in order if level in counts}
     base = max(counts.values(), default=0) if relative_to_max else sum(counts.values())
-    if base <= 0:
+    if not counts:
         return None
     return {
         "votes": counts,
-        "share": {level: round(n / base, 4) for level, n in counts.items()},
+        "share": {level: (round(n / base, 4) if base > 0 else 0.0) for level, n in counts.items()},
     }
 
 

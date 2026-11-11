@@ -41,7 +41,8 @@ zero = html.fromstring(
 )
 for span in zero.xpath("//span[contains(@class,'text-[10px]')]"):
     span.text = "0"
-assert page_votes(zero) == (None, None), "no votes at all is stored as missing"
+zero_votes = page_votes(zero)
+assert zero_votes[0] and not any(int(v) for v in zero_votes[0].values()), "no votes at all is stored as zeros"
 
 # ---- scrolling for the vote cards stops at the Reviews heading ----
 import browser_client as bc  # noqa: E402
@@ -108,3 +109,11 @@ assert ps.heading_brand(html.fromstring(
     "<html><body><h1>Miss Dior Blooming Chanel <small>for women</small></h1>"
     "<a href='/designers/Dior.html'>Dior</a><a href='/designers/Chanel.html'>Chanel</a></body></html>")) == "Chanel"
 print("brand read whole from the heading OK")
+
+# ---- a chart nobody voted on is kept as zeros, not dropped ----
+import clean  # noqa: E402
+empty = clean._chart({"winter": "0", "spring": "0", "summer": "0", "fall": "0", "day": "0", "night": "0"},
+                     {k: k for k in clean.WHEN_KEYS}, clean.WHEN_KEYS, relative_to_max=True)
+assert empty and set(empty["share"].values()) == {0.0} and set(empty["votes"].values()) == {0}, empty
+assert clean._chart(None, {k: k for k in clean.WHEN_KEYS}, clean.WHEN_KEYS) is None, "missing chart stays None"
+print("charts with no votes keep zeros OK")

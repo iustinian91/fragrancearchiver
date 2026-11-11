@@ -234,7 +234,9 @@ def compare_chart(name, stored_votes, shown_rows):
         return [_check(field, FAIL, "page labels {} are not the expected {}".format(
             list(labels), list(SITE_LABELS[name])))]
     if not any(counts):
-        return [_check(field, PASS if stored_votes is None else FAIL, "all displayed counts are 0")]
+        stored = None if stored_votes is None else [int(stored_votes.get(key, -1)) for key in STORED_KEYS[name]]
+        return [_check(field, PASS if stored == [0] * len(counts) else FAIL,
+                       "all displayed counts are 0; stored {}".format(stored_votes))]
     if stored_votes is None:
         return [_check(field, FAIL, "page shows {} but nothing was stored".format(dict(zip(labels, counts))))]
     got = [int(stored_votes.get(key, -1)) for key in STORED_KEYS[name]]
@@ -251,6 +253,9 @@ def compare_normalized(name, cleaned, shown_rows):
         return [_check(field, UNAVAILABLE, "no chart")]
     votes, share = cleaned["votes"], cleaned["share"]
     keys = STORED_KEYS[name]
+    if not any(votes.values()):
+        bad = [k for k in keys if share[k] != 0]
+        return [_check(field, FAIL if bad else PASS, "no votes: every share is 0" if not bad else "shares {} should be 0".format(bad))]
     base = max(votes.values()) if name in RELATIVE_TO_MAX else sum(votes.values())
     problems = []
     for key in keys:

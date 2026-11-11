@@ -176,3 +176,16 @@ with _tempfile.TemporaryDirectory() as _tmp:
     assert _a == st.random_urls(5, 42, _manifest) and len(set(_a)) == 5 and _a != st.random_urls(5, 43, _manifest)
     assert len(st.random_urls(500, 1, _manifest)) == 100
 print("--random samples are repeatable OK")
+
+# a chart showing only zeros must be stored as zeros (not null), with every share 0
+zero_page = copy.deepcopy(shown)
+zero_page["charts"]["gender"] = [dict(r, count="0", width=0) for r in shown["charts"]["gender"]]
+zrec = copy.deepcopy(record)
+zrec["gender"] = {k: "0" for k in so.STORED_KEYS["gender"]}
+zclean = copy.deepcopy(cleaned)
+zclean["gender"] = {"votes": {k: 0 for k in so.STORED_KEYS["gender"]}, "share": {k: 0.0 for k in so.STORED_KEYS["gender"]}}
+zres = statuses(zrec, zero_page, zclean)
+assert zres["chart: gender"] == so.PASS and zres["normalized: gender"] == so.PASS, zres
+zrec["gender"] = None
+assert statuses(zrec, zero_page, {})["chart: gender"] == so.FAIL, "null for an all-zero chart is now a failure"
+print("all-zero charts must be stored as zeros")
