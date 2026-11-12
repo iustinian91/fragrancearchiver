@@ -39,8 +39,6 @@ data/
 ```
 
 Names in the rest of this file are shortened (`perfumes.sqlite` means `data/databases/perfumes.sqlite`).
-Coming from an older checkout with the files in the project folder? Run `python migrate_layout.py`
-to see what would move, then `python migrate_layout.py --apply`. Nothing is overwritten.
 
 ## Perfume URL discovery
 
