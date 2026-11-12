@@ -337,9 +337,15 @@ def image_problem(path):
             image.verify()
         with Image.open(path) as image:
             image.load()
-    except ImportError:
+    except ImportError:   # no Pillow: check that the file ends where its format says it should
         if kinds[0] and not data.rstrip(b"\x00").endswith(b"\xff\xd9"):
             return "JPEG is cut off (no end marker)"
+        if kinds[1] and not data.endswith(b"IEND\xaeB`\x82"):
+            return "PNG is cut off (no end chunk)"
+        if kinds[2] and int.from_bytes(data[4:8], "little") + 8 != len(data):
+            return "WEBP is cut off (shorter than its header says)"
+        if kinds[3] and not data.rstrip(b"\x00").endswith(b"\x3b"):
+            return "GIF is cut off (no trailer)"
     except Exception as exc:   # PIL raises many kinds of errors for corrupt files
         return "does not decode: {}".format(exc)
     return None

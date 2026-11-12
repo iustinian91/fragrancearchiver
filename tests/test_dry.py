@@ -109,6 +109,27 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "not a JPEG" in so.image_problem(tmp / "html.jpg")
     assert so.image_problem(tmp / "cut.png") is not None
     assert so.image_problem(tmp / "absent.jpg") == "file is missing"
+    # the same checks without Pillow (it is not in requirements.txt), so the result does not
+    # depend on what happens to be installed
+    saved_pil = sys.modules.get("PIL", "unset")
+    sys.modules["PIL"] = None          # makes "from PIL import Image" raise ImportError
+    try:
+        assert so.image_problem(tmp / "ok.png") is None
+        assert "cut off" in so.image_problem(tmp / "cut.png")
+        (tmp / "cut.jpg").write_bytes(b"\xff\xd8\xff" + os.urandom(4000))
+        assert "cut off" in so.image_problem(tmp / "cut.jpg")
+        (tmp / "ok.gif").write_bytes(b"GIF89a" + os.urandom(2000) + b"\x3b")
+        (tmp / "cut.gif").write_bytes(b"GIF89a" + os.urandom(2000))
+        assert so.image_problem(tmp / "ok.gif") is None and "cut off" in so.image_problem(tmp / "cut.gif")
+        body = b"WEBPVP8 " + os.urandom(2000)
+        (tmp / "ok.webp").write_bytes(b"RIFF" + len(body).to_bytes(4, "little") + body)
+        (tmp / "cut.webp").write_bytes((tmp / "ok.webp").read_bytes()[:-500])
+        assert so.image_problem(tmp / "ok.webp") is None and "cut off" in so.image_problem(tmp / "cut.webp")
+    finally:
+        if saved_pil == "unset":
+            del sys.modules["PIL"]
+        else:
+            sys.modules["PIL"] = saved_pil
 print("image validation catches missing, empty, wrong-type and truncated files OK")
 
 # note pages: a real page's displayed photos against what was stored
