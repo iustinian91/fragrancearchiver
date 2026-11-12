@@ -241,6 +241,29 @@ try:
     c._pace_request((4.0, 4.0))
     assert _slept == [4.0, 8.0, 16.0], _slept
     c.block_streak = 0
+
+    # page requests: the time a page took counts toward the wait before the next one
+    clock = [100.0]
+    _real_monotonic, bc.monotonic = bc.monotonic, lambda: clock[0]
+    _slept.clear()
+    c = _fresh()
+    c._pace_request((6.0, 6.0), page=True)
+    assert _slept == [6.0], _slept                 # the first page waits the full time
+    clock[0] += 14.0                               # reading the page took 14 s
+    c._pace_request((6.0, 6.0), page=True)
+    assert _slept[-1] == 0.0, _slept               # so nothing more is needed
+    clock[0] += 2.0                                # a quick page (an error, a skipped one)
+    c._pace_request((6.0, 6.0), page=True)
+    assert _slept[-1] == 4.0, _slept               # still gets the rest of the gap
+    c.slowdown = 4.0                               # after blocks the wait grows 4x ...
+    clock[0] += 14.0
+    c._pace_request((6.0, 6.0), page=True)
+    assert _slept[-1] == 10.0, _slept              # ... so a 14 s page is followed by 10 s more
+    _slept.clear()
+    c._pace_request((4.0, 4.0))                    # non-page requests (images) keep their plain pause
+    assert _slept == [16.0], _slept
+    bc.monotonic = _real_monotonic
+    c.block_streak = 0
     c = _fresh()
     c.slowdown = 100.0
     c._note_block("x")

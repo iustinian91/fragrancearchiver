@@ -17,7 +17,8 @@ The four crawling scripts use a shared visible Chromium browser through
 Patchright. They use ordinary browser navigation and page rendering, with no
 stealth settings, CAPTCHA solvers, proxy rotation, or automated challenge
 bypass. Requests are sequential and paced by randomized delays in
-`browser_client.py`.
+`browser_client.py`: the wait before a page (2.5 to 10 seconds) counts from the start of the previous page,
+so the time spent loading and scrolling it is part of the wait.
 
 HTTP 429 responses are retried for the same URL after the server's
 `Retry-After` interval plus a two-second buffer. If that header is missing or

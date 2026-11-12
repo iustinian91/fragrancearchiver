@@ -7,7 +7,7 @@ from collections import Counter, deque
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from time import sleep
+from time import monotonic, sleep
 from urllib.parse import urljoin, urlsplit
 
 from lxml import html
@@ -229,6 +229,8 @@ class BrowserClient:
     clean_streak = 0       # fetches since the last block
     _persistent = False
 
+    _last_page_start = None    # when the last page request began (see _pace_request)
+
     def __init__(self, headless=HEADLESS, timeout_ms=REQUEST_TIMEOUT_MS, block_ads=None,
                  allowed_hosts=None, profile_dir=None):
         self.profile_dir = PROFILE_DIR if profile_dir is None else profile_dir
@@ -313,9 +315,22 @@ class BrowserClient:
             if self._playwright is not None:
                 self._playwright.stop()
 
-    def _pace_request(self, delays=REQUEST_DELAYS):
-        """Add a small randomized pause before each outbound request, longer after blocks."""
-        sleep(random.uniform(*delays) * self.slowdown)
+    def _pace_request(self, delays=REQUEST_DELAYS, page=False):
+        """Wait a randomized time before an outbound request, longer after blocks.
+
+        For page requests (`page=True`) the wait counts from the start of the previous page
+        request, so the time spent reading that page (loading, scrolling) is part of it and
+        only what is left is slept. A page that took longer than the wait needs no pause; a
+        quick one (an error page, a skipped one) still gets the full gap. After blocks the
+        wait grows with `slowdown`, so the backoff still bites."""
+        wait = random.uniform(*delays) * self.slowdown
+        if page:
+            if self._last_page_start is not None:
+                wait -= monotonic() - self._last_page_start
+            sleep(max(0.0, wait))
+            self._last_page_start = monotonic()
+        else:
+            sleep(wait)
 
     def _recent(self):
         if self.recent is None:
@@ -577,7 +592,7 @@ class BrowserClient:
         self.scroll_complete = True
         rate_limited = server_failed = 0
         while True:
-            self._pace_request()
+            self._pace_request(page=True)
             response = self.page.goto(
                 url,
                 wait_until="domcontentloaded",
