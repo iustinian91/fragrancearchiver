@@ -526,3 +526,60 @@ for n in range(60):                                       # one block in every 1
         c._note_block("x")
     c._note_ok()
 print("a block in every few fetches stops the run; the occasional one does not OK")
+
+
+# ---- the registration popup is hidden in every browser the client starts ----
+from archiver import browser_client as _bc  # noqa: E402
+
+assert "registration-nudge-overlay" in _bc.HIDE_POPUPS_JS and "display: none" in _bc.HIDE_POPUPS_JS
+
+
+class _Ctx:
+    def __init__(self):
+        self.scripts, self.routes, self.pages = [], [], []
+
+    def add_init_script(self, script=None, **kw):
+        self.scripts.append(script)
+
+    def route(self, pattern, handler):
+        self.routes.append(pattern)
+
+    def new_page(self):
+        page = types.SimpleNamespace(set_default_timeout=lambda ms: None)
+        self.pages.append(page)
+        return page
+
+    def close(self):
+        pass
+
+
+class _Chromium:
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+    def launch(self, **kw):
+        return types.SimpleNamespace(new_context=lambda: self.ctx, close=lambda: None)
+
+    def launch_persistent_context(self, folder, **kw):
+        return self.ctx
+
+
+for _profile in ("", "profile_dir_for_test"):
+    for _ads in (True, False):
+        _ctx = _Ctx()
+        _real_pw = _bc.sync_playwright
+        _bc.sync_playwright = lambda c=_ctx: types.SimpleNamespace(
+            start=lambda: types.SimpleNamespace(chromium=_Chromium(c), stop=lambda: None))
+        try:
+            _client = _bc.BrowserClient(profile_dir=_profile, block_ads=_ads) if "profile_dir" in _bc.BrowserClient.__init__.__code__.co_varnames else None
+            if _client is None:
+                break
+            with tempfile.TemporaryDirectory() as _t:
+                os.chdir(_t)
+                with _client:
+                    pass
+        finally:
+            _bc.sync_playwright = _real_pw
+        assert _ctx.scripts == [_bc.HIDE_POPUPS_JS], (_profile, _ads, _ctx.scripts)
+        assert bool(_ctx.routes) == _ads        # popups are hidden whether or not ad blocking is on
+print("the popup-hiding rule is installed with and without ad blocking and a saved profile OK")

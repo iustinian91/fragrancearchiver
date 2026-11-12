@@ -204,9 +204,9 @@ tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HO
 blocked and the busiest blocked hosts; if vote charts come back empty with it on, check that
 list for a host the page needs and add it. It also drops font and video requests to the allowed hosts, which the scraper never reads
 (page images stay, because without them the page is shorter and the lazy vote cards are reached
-differently). It is off by default. To see whether it helps,
-run the dry test with and without it. It does not remove the site's own sign-up popup
-(`#registration-nudge-overlay`); the scroll unlock handles that.
+differently). It is on by default; to see what it changes, run the dry test with and without it.
+The site's sign-up popup (`#registration-nudge-overlay`) is a separate matter: a style rule hides it on
+every page, with or without ad blocking, and the scroll unlock undoes any scroll lock it left behind.
 
 ### Rebuilding the database
 

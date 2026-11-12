@@ -140,6 +140,30 @@ UNLOCK_SCROLL_JS = """() => {
   }
 }"""
 
+# The site's registration prompt (#registration-nudge-overlay) covers the page and locks scrolling.
+# A style rule added to every page before it loads keeps it from ever showing; nothing is clicked.
+# (A hidden overlay can still leave the scroll lock behind, which UNLOCK_SCROLL_JS undoes.)
+HIDE_POPUPS_CSS = "#registration-nudge-overlay { display: none !important; pointer-events: none !important; }"
+HIDE_POPUPS_JS = """(() => {
+  // This runs before the page has any elements, so wait for one to put the rule in.
+  const add = () => {
+    const root = document.head || document.documentElement;
+    if (!root) return false;
+    if (!document.getElementById('archiver-hide-popups')) {
+      const style = document.createElement('style');
+      style.id = 'archiver-hide-popups';
+      style.textContent = %s;
+      root.appendChild(style);
+    }
+    return true;
+  };
+  if (!add()) {
+    const watcher = new MutationObserver(() => { if (add()) watcher.disconnect(); });
+    watcher.observe(document, {childList: true, subtree: true});
+  }
+  document.addEventListener('DOMContentLoaded', add);   // again, in case the page replaced <head>
+})();""" % repr(HIDE_POPUPS_CSS)
+
 
 def image_problem(data):
     """Why `data` cannot be an image file, or None if it looks like one."""
@@ -233,6 +257,7 @@ class BrowserClient:
             else:
                 self.browser = self._playwright.chromium.launch(headless=self.headless)
                 self.context = self.browser.new_context()
+            self.context.add_init_script(HIDE_POPUPS_JS)
             if self.block_ads:
                 self.context.route("**/*", self._on_request)
             self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
