@@ -48,7 +48,7 @@ SLOW_SCROLL_STEPS = 12       # the slow second pass when a box stayed empty
 SLOW_SCROLL_WAIT_MS = 600
 HEADLESS = False
 
-# Ad blocking (on by default, --no-block-ads turns it off): every request to a host that is not listed here is aborted. The
+# Ad blocking (on by default, --no-adblock turns it off): every request to a host that is not listed here is aborted. The
 # pages carry about 45 ad, tracker and cookie-sync hosts the scraper never reads. Cloudflare is
 # allowed so its challenge can run, and the site's own hosts so the vote charts can load.
 BLOCK_ADS = True
@@ -169,10 +169,10 @@ def matching_urls(tree, base_url, pattern):
 def add_browser_arguments(parser):
     """The command-line options every crawler shares: ad blocking and the browser profile."""
     parser.add_argument(
-        "--block-ads", action=argparse.BooleanOptionalAction, default=None, dest="block_ads",
-        help="abort requests to every host except fragrantica.com, fimgs.net and Cloudflare "
-             "(ads and trackers); prints what was blocked when the browser closes. On by default; "
-             "--no-block-ads loads everything the page asks for")
+        "--no-adblock", action="store_true", dest="no_adblock",
+        help="load everything the page asks for. By default requests to every host except "
+             "fragrantica.com, fimgs.net and Cloudflare (ads and trackers) are aborted, and what "
+             "was blocked is printed when the browser closes")
     parser.add_argument(
         "--profile", default=str(paths.profile_dir()), metavar="DIR",
         help="folder that keeps the browser's cookies between runs, so a challenge that was "
@@ -186,8 +186,8 @@ def apply_browser_arguments(args):
     """Turn those options into the module settings BrowserClient reads. Settings a caller made
     first (the dry test) are kept."""
     global BLOCK_ADS, PROFILE_DIR
-    if args.block_ads is not None:
-        BLOCK_ADS = args.block_ads
+    if args.no_adblock:
+        BLOCK_ADS = False
     if PROFILE_DIR is None:
         PROFILE_DIR = "" if args.no_profile else args.profile
 

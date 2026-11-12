@@ -303,16 +303,14 @@ try:
     bc.PROFILE_DIR = ""
     bc.apply_browser_arguments(_p.parse_args([]))
     assert bc.PROFILE_DIR == "", "the dry test's fresh browser is kept"
-    # ad blocking: on by default, switched off by --no-block-ads, and a caller's choice is kept
+    # ad blocking: on by default, switched off by --no-adblock, and a caller's choice is kept
     bc.BLOCK_ADS = True
     bc.apply_browser_arguments(_p.parse_args([]))
     assert bc.BLOCK_ADS is True
-    bc.apply_browser_arguments(_p.parse_args(["--no-block-ads"]))
+    bc.apply_browser_arguments(_p.parse_args(["--no-adblock"]))
     assert bc.BLOCK_ADS is False
     bc.apply_browser_arguments(_p.parse_args([]))
     assert bc.BLOCK_ADS is False, "no flag keeps what a caller set"
-    bc.apply_browser_arguments(_p.parse_args(["--block-ads"]))
-    assert bc.BLOCK_ADS is True
 finally:
     bc.PROFILE_DIR, bc.BLOCK_ADS = _old
 print("slowdown, stop after three blocks, and profile options OK")

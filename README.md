@@ -188,7 +188,7 @@ page through scrape, export, clean and the app database.
 
 ### Blocking ads
 
-Ad blocking is on by default. `--no-block-ads` (on the scrapers, the manifest crawlers and `dry_test.py`) turns it off; `--block-ads` still works and says the same as the default. With it on, every
+Ad blocking is on by default. `--no-adblock` (on the scrapers, the manifest crawlers and `dry_test.py`) turns it off. With it on, every
 request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare is aborted, so the ~45 ad,
 tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HOSTS` in
 `browser_client.py`. When the browser closes it prints how many requests were allowed and
