@@ -251,9 +251,8 @@ After a failed run, `python dry_test.py --only-failed dry_run_<time>` re-tests j
    whose Fragrantica page has no title are dropped (`--keep-unnamed` keeps them).
 5. `build_app_db.py [--in perfumes_clean.json] [--out app.db]` - build the searchable `app.db`; it checks the new file (integrity, row counts) before replacing the old one.
 
-`data/exports/perfumes.json` and `data/exports/perfumes_clean.json` are generated intermediates and
-are not tracked in git; `perfumes.sqlite`, `notes.sqlite` and the manifests
-are the source data, and `app.db` is the shipped output. After re-scraping or
+Nothing under `data/` is tracked in git: the repository ships empty, and every file there is created by the
+commands above. After re-scraping or
 changing `clean.py`, rerun steps 3-5 so `app.db` stays in sync:
 
 ```bash

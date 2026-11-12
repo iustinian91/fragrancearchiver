@@ -44,17 +44,5 @@ perfumes_failed.txt
 notes_gone.txt
 notes_failed.txt
 
-# Generated data (the databases and manifests under data/ stay tracked)
-data/exports/
-data/images/
-data/logs/
-data/browser_profile/
-data/dry_runs/
-data/manifests/*.tmp
-data/manifests/*.state.json
-data/manifests/*.empty.txt
-data/manifests/*.short.txt
-data/manifests/*.new.txt
-data/databases/app.db.building*
-data/databases/*-wal
-data/databases/*-shm
+# Everything the commands generate (manifests, databases, exports, images, logs, browser profile, dry runs)
+data/
