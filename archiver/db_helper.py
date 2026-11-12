@@ -133,4 +133,4 @@ class PerfumesDBHelper(_TableDB):
 
 class NotesDBHelper(_TableDB):
     table = "notes"
-    columns = ("note", "images")
+    columns = ("note", "images", "category")

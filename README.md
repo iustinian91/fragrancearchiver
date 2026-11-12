@@ -95,6 +95,10 @@ only after successful extraction. A failed request or write leaves the
 previous completed manifest untouched. Rerunning repeats this one-page
 discovery operation.
 
+The index groups notes under headings (Citrus Smells, Flowers, Spices, ...). Each note's
+category is saved next to the manifest in `notes_categories.json`, and `notes_scraper.py` stores it
+in the `category` column of `notes.sqlite`. Rerun the crawler to refresh it.
+
 ## Scraping and URL-based resume
 
 Run:

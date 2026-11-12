@@ -127,6 +127,24 @@ NOTE_LINKS_JS = r"""
   .map(u => u.pathname)).size
 """
 
+# {note path: category}: a note belongs to the last uppercase <h2> heading before its link.
+NOTE_CATEGORIES_JS = r"""
+() => {
+  const out = {};
+  let current = null;
+  for (const el of document.querySelectorAll('h2, a[href]')) {
+    if (el.tagName === 'H2') {
+      const text = el.textContent.replace(/\s+/g, ' ').trim();
+      if (text && text === text.toUpperCase() && /[A-Z]/.test(text)) current = text;
+      continue;
+    }
+    let u; try { u = new URL(el.getAttribute('href'), location.href); } catch (e) { continue; }
+    if (current && /\/notes\/[^/]+-\d+\.html?$/i.test(u.pathname) && !(u.pathname in out)) out[u.pathname] = current;
+  }
+  return out;
+}
+"""
+
 
 def parse_count(text):
     """'216' -> 216, '2.6k' -> 2600, '1.2M' -> 1200000 (the same abbreviation rule as the site)."""

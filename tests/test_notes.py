@@ -45,3 +45,39 @@ assert [u for u, _ in client.downloads] == [
 old = html.fromstring("<html><body><h1>Amber</h1><h3>Photos</h3><div><div><img src='f.9.jpg'></div></div></body></html>")
 assert ns.note_photo_urls(old, "https://www.fragrantica.com/notes/Amber-9.html") == []
 print("note page: title and the 3 photos OK; perfume thumbnails ignored")
+
+
+# ---- the scraper stores each note's category from notes_categories.json ----
+import json  # noqa: E402
+import os  # noqa: E402
+import sqlite3  # noqa: E402
+import tempfile  # noqa: E402
+
+BERGAMOT = "https://www.fragrantica.com/notes/Bergamot-75.html"
+with tempfile.TemporaryDirectory() as tmp:
+    os.chdir(tmp)
+    ns.IMAGE_DIR = Path("images")
+    Path("notes_manifest.txt").write_text(BERGAMOT + "\n")
+    ns.CATEGORIES_FILE = Path("notes_categories.json")
+
+    class Live(Client):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    ns.BrowserClient = Live
+    ns.GONE_FILE, ns.FAILED_FILE = Path("g.txt"), Path("f.txt")
+
+    Path("notes_categories.json").write_text(json.dumps({BERGAMOT: "CITRUS SMELLS"}))
+    assert ns.main(["--db", "n.sqlite"]) == 0
+    conn = sqlite3.connect("n.sqlite")
+    assert conn.execute("SELECT note, category, url, page_id FROM notes").fetchall() == [
+        ("Bergamot", "CITRUS SMELLS", BERGAMOT, "75")]
+    conn.close()
+
+    # without a categories file the note is still stored, with no category
+    Path("notes_categories.json").unlink()
+    assert ns.main(["--db", "m.sqlite"]) == 0
+    conn = sqlite3.connect("m.sqlite")
+    assert conn.execute("SELECT note, category FROM notes").fetchall() == [("Bergamot", None)]
+    conn.close()
+print("note category stored with the note OK")

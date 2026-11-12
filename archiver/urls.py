@@ -3,6 +3,7 @@
 Manifests and progress ledgers key on the URL, so one page must always have one spelling:
 https, with www, and no query string or fragment."""
 
+import json
 from urllib.parse import urljoin, urlsplit
 
 BASE_URL = "https://www.fragrantica.com"
@@ -33,3 +34,13 @@ def too_small_to_replace(new_count, old_count, force=False):
     """True if a new manifest is so much smaller than the existing one that it is probably an
     incomplete crawl (or a trial run): such a manifest must not overwrite the good one."""
     return bool(old_count) and not force and new_count < old_count * MIN_KEEP_SHARE
+
+
+def read_categories(path):
+    """{note url: category} from a notes_categories.json file; {} if it is missing or unreadable."""
+    try:
+        with open(path, encoding="utf-8") as source:
+            data = json.load(source)
+    except (OSError, ValueError):
+        return {}
+    return {canonical_url(url): name for url, name in data.items()} if isinstance(data, dict) else {}

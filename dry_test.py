@@ -410,10 +410,20 @@ def stage_notes_scrape(report, args, workdir, all_notes):
     db_checks(report, stage, "notes.sqlite", sample, rows, lambda r: (r[0], r[1]))
     idempotence(report, stage, ns.main, ["--db", "notes.sqlite"], "notes.sqlite", "notes", workdir, manifest, sample)
 
+    missing = [r[3] for r in rows if not r[2]]
+    report.add(stage, "", "every sampled note has a category", PASS if not missing else FAIL,
+               "{} of {} without one: {}".format(len(missing), len(rows), missing[:3]))
+
     if args.skip_oracle:
         return
     stored = {r[0]: json.loads(r[1]) for r in rows}
     with BrowserClient() as client:
+        client.fetch_tree(BASE_URL + "/notes/")
+        live = client.page.evaluate(so.NOTE_CATEGORIES_JS)
+        for row in rows:
+            path = row[3].replace(BASE_URL, "")
+            report.add(stage, path.rsplit("/", 1)[-1], "category matches the notes page",
+                       PASS if live.get(path) == row[2] else FAIL, "stored {!r}; page {!r}".format(row[2], live.get(path)))
         for url in sample:
             client.fetch_tree(url)
             client.page.wait_for_timeout(2000)

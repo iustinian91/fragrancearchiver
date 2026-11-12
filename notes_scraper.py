@@ -9,11 +9,12 @@ from urllib.parse import urljoin, urlsplit
 from archiver import browser_client, paths
 from archiver.browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
 from archiver.db_helper import NotesDBHelper
-from archiver.urls import read_manifest
+from archiver.urls import read_categories, read_manifest
 
 IMAGE_DIR = paths.image_dir("notes")
-GONE_FILE = "notes_gone.txt"       # pages the site no longer has (HTTP 404/410): url and reason
-FAILED_FILE = "notes_failed.txt"   # pages that could not be read: url and reason
+CATEGORIES_FILE = paths.manifest_file("notes_categories.json")   # written by notes_extract_manifest.py
+GONE_FILE = paths.log_file("notes_gone.txt")       # pages the site no longer has (HTTP 404/410): url and reason
+FAILED_FILE = paths.log_file("notes_failed.txt")   # pages that could not be read: url and reason
 # The note's own photos: .../mdimg/sastojci/t.75.jpg, t2.75.jpg, t3.75.jpg (up to three per note).
 # The page also shows many other pictures (thumbnails of perfumes), which must not match.
 NOTE_PHOTO = re.compile(r"/mdimg/sastojci/[a-z]\d*\.\d+\.jpe?g$", re.IGNORECASE)
@@ -72,6 +73,11 @@ def main(argv=None):
         db.close()
         return 1
 
+    categories = read_categories(CATEGORIES_FILE)
+    if not categories:
+        print("No categories in {}; notes are stored without one. Run notes_extract_manifest.py to get them.".format(
+            CATEGORIES_FILE), flush=True)
+
     total = len(note_urls)
     gone = db.gone_urls()
     pending = [url for url in note_urls if url not in completed and url not in gone]
@@ -94,12 +100,14 @@ def main(argv=None):
                     print("  [gone] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     db.mark_gone(url, str(exc))
                     skipped_gone.append(url)
+                    paths.ensure_parent(GONE_FILE)
                     with open(GONE_FILE, "a", encoding="utf-8") as log:
                         log.write("{}\t{}\n".format(url, exc))
                     continue
                 except ValueError as exc:
                     print("  [unreadable] {}: {}".format(url.rsplit("/", 1)[-1], exc), flush=True)
                     unreadable.append(url)
+                    paths.ensure_parent(FAILED_FILE)
                     with open(FAILED_FILE, "a", encoding="utf-8") as log:
                         log.write("{}\t{}\n".format(url, exc))
                     unreadable_in_a_row += 1
@@ -108,7 +116,7 @@ def main(argv=None):
                             unreadable_in_a_row, exc))
                     continue
                 unreadable_in_a_row = 0
-                db.add_record_for_url(url, (note_title, json.dumps(image_names)))
+                db.add_record_for_url(url, (note_title, json.dumps(image_names), categories.get(url)))
                 completed.add(url)
                 print({
                     "progress": "{}/{}".format(position, len(pending)),
