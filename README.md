@@ -2,6 +2,8 @@
 
 A Python project for collecting fragrance specifications.
 
+Based on the 2019 work of Ehsan Moradi; see [LICENSE](LICENSE).
+
 ## Setup
 
 ```bash
