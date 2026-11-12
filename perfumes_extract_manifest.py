@@ -27,8 +27,6 @@ SHORT_PATH = paths.manifest_file("perfumes_manifest.short.txt")  # designers wit
 SHORT_SHARE = 0.9     # a designer with under 90% of the perfumes it had in the previous manifest ...
 SHORT_MIN_GAP = 3     # ... and at least 3 fewer, is fetched once more, and recorded if still short
 NEW_PATH = paths.manifest_file("perfumes_manifest.new.txt")      # a crawl too small to replace the manifest is kept here
-LEGACY_TEMP_PATH = Path("manifest.txt.tmp")
-LEGACY_OUTPUT_PATH = Path("manifest.txt")
 
 COUNTRIES = [
     "United States", "France", "Italy", "United Kingdom", "United Arab Emirates", "Germany",
@@ -43,24 +41,11 @@ PERFUME_LINKS = 'a[href*="/perfume/"]'   # what the designer page scroll counts
 BRAND_LINKS = 'a[href*="/designers/"]'
 
 
-def migrate_legacy_manifest():
-    """Preserve URL lists written by older versions using manifest.txt names."""
-    if TEMP_OUTPUT_PATH.exists():
-        return
-    if LEGACY_TEMP_PATH.exists():
-        LEGACY_TEMP_PATH.replace(TEMP_OUTPUT_PATH)
-        print("Resuming from legacy temporary manifest: {}".format(TEMP_OUTPUT_PATH))
-    elif LEGACY_OUTPUT_PATH.exists() and not OUTPUT_PATH.exists():
-        LEGACY_OUTPUT_PATH.replace(TEMP_OUTPUT_PATH)
-        print("Migrated legacy manifest to {}".format(TEMP_OUTPUT_PATH))
-
-
 def load_progress():
     """Return the next country, the designer URL to resume at (or None), and URLs already saved.
 
     The position is stored as a designer URL, not an index: the designer list is read from a
     lazily loaded page and an index could point at a different designer on the next run."""
-    migrate_legacy_manifest()
     seen = set()
     if TEMP_OUTPUT_PATH.exists():
         seen = set(read_manifest(TEMP_OUTPUT_PATH))

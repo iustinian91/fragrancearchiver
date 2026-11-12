@@ -66,7 +66,6 @@ def main(argv=None):
         note_urls = read_manifest(manifest)
         if not note_urls:
             raise FileNotFoundError("{} is missing or empty; run notes_extract_manifest.py".format(manifest))
-        db.migrate_legacy_progress(note_urls)
         completed = db.completed_urls()
     except (OSError, ValueError, RuntimeError) as exc:
         print("Could not prepare notes scrape: {}".format(exc))

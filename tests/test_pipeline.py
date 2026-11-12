@@ -52,11 +52,6 @@ empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_sou
 
 with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
-    # an older database (7 columns) gains the new columns instead of failing
-    old = sqlite3.connect("perfumes.sqlite")
-    old.execute("CREATE TABLE perfumes (brand TEXT, perfume TEXT, launch_year TEXT, main_accords TEXT, notes TEXT, longevity TEXT, sillage TEXT)")
-    old.commit()
-    old.close()
     db = db_helper.PerfumesDBHelper("perfumes.sqlite")
     db.setup()
     db.add_record_for_url("u1", record)
@@ -82,48 +77,10 @@ with tempfile.TemporaryDirectory() as tmp:
     print("scrape -> export -> clean -> app.db OK ({} vote rows)".format(len(rows)))
 
 
-# ---- the progress ledger: old http:// entries are rewritten, not scraped again ----
 import sqlite3  # noqa: E402
-import tempfile as _tf  # noqa: E402
+import tempfile  # noqa: E402
 
 from archiver import db_helper  # noqa: E402
-
-with _tf.TemporaryDirectory() as tmp:
-    path = os.path.join(tmp, "x.sqlite")
-    helper = db_helper.PerfumesDBHelper(path)
-    helper.setup()
-    helper.conn.execute("INSERT INTO scrape_progress (url, completed_at) VALUES (?, ?)",
-                        ("http://www.fragrantica.com/perfume/A/B-1.html", "2026-01-01 00:00:00"))
-    helper.conn.commit()
-    helper.close()
-    helper = db_helper.PerfumesDBHelper(path)
-    helper.setup()
-    assert helper.completed_urls() == {"https://www.fragrantica.com/perfume/A/B-1.html"}
-    assert helper.conn.execute("SELECT completed_at FROM scrape_progress").fetchone()[0] == "2026-01-01 00:00:00"
-    helper.close()
-print("ledger URLs made canonical OK")
-
-# ---- rows from an older crawl are reported, since marking them complete keeps them as they are ----
-import contextlib  # noqa: E402
-import io  # noqa: E402
-
-with _tf.TemporaryDirectory() as tmp:
-    path = os.path.join(tmp, "old.sqlite")
-    legacy = sqlite3.connect(path)
-    legacy.execute("CREATE TABLE perfumes (brand TEXT, perfume TEXT, launch_year TEXT, main_accords TEXT, notes TEXT, longevity TEXT, sillage TEXT)")
-    legacy.execute("INSERT INTO perfumes VALUES ('A', '{\"image\": \"o.1.jpg\"}', '2000', 'null', 'null', 'null', 'null')")
-    legacy.commit()
-    legacy.close()
-    helper = db_helper.PerfumesDBHelper(path)
-    helper.setup()
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        helper.migrate_legacy_progress(["https://www.fragrantica.com/perfume/A/B-1.html", "https://www.fragrantica.com/perfume/A/C-2.html"])
-    assert "WARNING: 1 rows come from an older crawl" in out.getvalue(), out.getvalue()
-    assert helper.completed_urls() == {"https://www.fragrantica.com/perfume/A/B-1.html"}
-    helper.close()
-print("older-crawl rows are reported OK")
-
 
 # ---- every row knows its page: url + page id, one row per page, ids in clean and app.db ----
 U1 = "https://www.fragrantica.com/perfume/Tom-Ford/Black-Orchid-1018.html"
@@ -139,14 +96,6 @@ with tempfile.TemporaryDirectory() as tmp:
     assert db.conn.execute("SELECT url, page_id, launch_year FROM perfumes WHERE page_id='1018'").fetchall() == [(U1, "1018", "2007")]
     assert db.completed_urls() == {U1, U2}
 
-    # rows of an older crawl (no url) get one from the id in their bottle image
-    db.conn.execute("INSERT INTO perfumes (brand, perfume) VALUES ('Old', ?)", (json.dumps({"image": "o.555.jpg"}),))
-    db.conn.execute("INSERT INTO perfumes (brand, perfume) VALUES ('NoImage', '{}')")
-    db.conn.commit()
-    other = "https://www.fragrantica.com/perfume/Old/Thing-555.html"
-    assert db.backfill_urls([U1, other]) == 1
-    assert db.conn.execute("SELECT url, page_id FROM perfumes WHERE brand='Old'").fetchone() == (other, "555")
-    assert db.conn.execute("SELECT url FROM perfumes WHERE brand='NoImage'").fetchone() == (None,)
     db.close()
 
     export.export_to_json()

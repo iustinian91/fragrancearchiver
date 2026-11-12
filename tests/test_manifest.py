@@ -98,7 +98,6 @@ def d(name): return "/designers/{}.html".format(name)
 def p(brand, i): return "/perfume/{}/P{}-{}.html".format(brand, i, i)
 country = B + "/country/TestLand.html"
 em.COUNTRIES = ["TestLand"]
-em.migrate_legacy_manifest = lambda: None
 
 pages = {country: page([d("A"), d("B"), d("C")]),
          B + d("A"): page([p("A", 1), p("A", 2)]),
