@@ -186,10 +186,10 @@ to the `perfume_votes` table (`perfume_id, chart, option, position, votes, share
 `popularity` is the number of longevity votes. `python tests/test_pipeline.py` runs a saved
 page through scrape, export, clean and the app database.
 
-### Blocking ads (optional)
+### Blocking ads
 
-`--block-ads` (on `perfumes_scraper.py`, `notes_scraper.py` and `dry_test.py`) aborts every
-request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare, so the ~45 ad,
+Ad blocking is on by default. `--no-block-ads` (on the scrapers, the manifest crawlers and `dry_test.py`) turns it off; `--block-ads` still works and says the same as the default. With it on, every
+request to a host other than `fragrantica.com`, `fimgs.net` and Cloudflare is aborted, so the ~45 ad,
 tracker and cookie-sync hosts on a page never load. The allowlist is `ALLOWED_HOSTS` in
 `browser_client.py`. When the browser closes it prints how many requests were allowed and
 blocked and the busiest blocked hosts; if vote charts come back empty with it on, check that

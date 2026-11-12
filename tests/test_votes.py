@@ -157,7 +157,7 @@ page = FakeRoute("https://www.fragrantica.com/p.html")
 page.request.resource_type = "document"
 client._on_request(page)
 assert page.done == "continue"
-assert bc.BrowserClient(block_ads=False).block_summary() == "" and bc.BrowserClient().block_ads is False
+assert bc.BrowserClient(block_ads=False).block_summary() == "" and bc.BrowserClient().block_ads is True
 print("ad blocking allowlist OK")
 
 # a count that cannot be read makes the chart missing, not a chart of zeros
