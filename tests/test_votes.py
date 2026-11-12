@@ -166,3 +166,18 @@ assert clean._chart({"winter": "12", "spring": "oops", "summer": "1", "fall": "2
 from archiver import charts  # noqa: E402
 assert ps.GENDER_KEYS is charts.GENDER_KEYS is clean.GENDER_KEYS and clean.CHART_ORDER is charts.CHART_KEYS
 print("unreadable counts drop the chart; one copy of the chart levels OK")
+
+
+# ---- the official audience label at the end of the page heading ----
+def _h1(text):
+    return html.fromstring("<html><body><h1>{}</h1></body></html>".format(text))
+
+
+assert ps.page_audience(_h1("Black Orchid <a>Tom Ford</a> for women")) == "female"
+assert ps.page_audience(_h1("Aventus <a>Creed</a> for men")) == "male"
+assert ps.page_audience(_h1("Y <a>YSL</a> for women and men")) == "unisex"
+assert ps.page_audience(_h1("Something   <a>Brand</a>\n  for   men")) == "male"          # spacing is normalized
+assert ps.page_audience(_h1("Formen <a>Brand</a>")) is None                                # a word ending in 'men' is not the label
+assert ps.page_audience(_h1("For Women Only <a>Brand</a>")) is None
+assert ps.page_audience(html.fromstring("<html><body><p>x</p></body></html>")) is None
+print("official audience label read from the heading OK")

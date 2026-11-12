@@ -47,8 +47,8 @@ print("flat note lists keep their own general group OK")
 record = ("Tom Ford", json.dumps({"title": "Black Orchid", "image": "o.1018.jpg", "title_source": "page", "brand_source": "page"}),
           "2006", json.dumps(["warm spicy"]), json.dumps({"top": ["Truffle"], "middle": ["Orchid"], "base": ["Patchouli"]}),
           json.dumps(charts["longevity"]), json.dumps(charts["sillage"]), json.dumps(charts["gender"]),
-          json.dumps(charts["when_to_wear"]), json.dumps([{"name": "David Apel", "slug": "David_Apel"}]))
-empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null", "[]")
+          json.dumps(charts["when_to_wear"]), json.dumps([{"name": "David Apel", "slug": "David_Apel"}]), "female")
+empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null", "[]", None)
 
 with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
@@ -69,11 +69,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert p["charts"]["when_to_wear"]["share"]["winter"] == round(12800 / 13000, 4)
     assert p["popularity"] == sum(lon["votes"].values()) == 14519
     assert next(x for x in data if x["name"] == "Nothing")["charts"] == {}
+    # the official label is kept next to the votes (which say unisex): stored, cleaned, and in app.db
+    assert p["audience"] == "female" and next(x for x in data if x["name"] == "Nothing")["audience"] is None
     build_app_db.main([])
     conn = sqlite3.connect("app.db")
     rows = conn.execute("SELECT chart, option, position, votes, share FROM perfume_votes ORDER BY chart, position").fetchall()
     assert len(rows) == 5 + 4 + 5 + 6 and all(0 <= r[4] <= 1 for r in rows)
     assert conn.execute("SELECT COUNT(*) FROM notes WHERE kind IN ('top','middle','base')").fetchone()[0] == 3
+    assert dict(conn.execute("SELECT name, audience FROM perfumes")) == {"Black Orchid": "female", "Nothing": None}
     print("scrape -> export -> clean -> app.db OK ({} vote rows)".format(len(rows)))
 
 

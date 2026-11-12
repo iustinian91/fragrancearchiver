@@ -246,6 +246,18 @@ def page_charts(tree):
     return charts
 
 
+AUDIENCES = {"women": "female", "men": "male", "women and men": "unisex"}
+
+
+def page_audience(tree):
+    """Fragrantica's own classification, the end of the page heading ("<perfume> <brand> for women"):
+    'female', 'male' or 'unisex'; None if the heading does not end that way. It is an editorial label,
+    not the vote chart, and the two can disagree."""
+    heading = " ".join(" ".join(tree.xpath("(//h1)[1]//text()")).split())
+    match = re.search(r"\sfor (women and men|women|men)$", heading)
+    return AUDIENCES[match.group(1)] if match else None
+
+
 def heading_brand(tree):
     """The brand as the page's heading spells it, for pages whose URL carries an older brand
     name ("A Lab on Fire" in the URL, "What We Do Is Secret" on the page): the designer link
@@ -387,7 +399,7 @@ def scrape_perfume(client, url):
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),
         json.dumps(notes), json.dumps(charts["longevity"]), json.dumps(charts["sillage"]),
         json.dumps(charts["gender"]), json.dumps(charts["when_to_wear"]),
-        json.dumps(page_perfumers(tree)),
+        json.dumps(page_perfumers(tree)), page_audience(tree),
     )
     return perfume, record
 

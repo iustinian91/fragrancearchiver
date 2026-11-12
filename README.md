@@ -148,6 +148,11 @@ either `page` or `url`) and the raw page title inside the `perfume` JSON, so
 names and years can be re-derived later without re-crawling. `clean.py` leaves
 `page` names exactly as scraped and only re-cases the `url` ones.
 
+Fragrantica's own audience label ("for women", "for men" or "for women and men", the end of the page
+heading) is stored as `audience` (`female`, `male` or `unisex`) and carried into `perfumes_clean.json`
+and `app.db`. It is an editorial label, separate from the gender vote chart, and the two can disagree:
+Black Orchid is "for women", but most voters say unisex.
+
 ### Trying it before a long crawl
 
 Check the extraction on a few pages with a scratch database first (`--limit` counts pages still to do):

@@ -33,6 +33,8 @@ PERFUME_JS = r"""
 
   const h1 = document.querySelector('h1');
   out.title = text(h1);
+  const aud = out.title.match(/ for (women and men|women|men)$/i);
+  out.audience = aud ? {'women': 'female', 'men': 'male', 'women and men': 'unisex'}[aud[1].toLowerCase()] : null;
   const brand = [...document.querySelectorAll('a[href*="/designers/"][href$=".html"]')].map(text).find(t => t);
   out.brand = brand || '';
   const launched = clean(document.body.innerText).match(/launched in (\d{4})/i);
@@ -195,6 +197,14 @@ def compare_identity(stored, shown):
     return checks
 
 
+def compare_audience(stored, shown):
+    """Fragrantica's own for-women / for-men / for-women-and-men label against the page heading."""
+    page = shown.get("audience")
+    if page is None and stored is None:
+        return [_check("audience", UNAVAILABLE, "the heading names no audience")]
+    return [_check("audience", PASS if stored == page else FAIL, "stored {!r}; page heading says {!r}".format(stored, page))]
+
+
 def compare_accords(stored, shown):
     if not shown["accords"] and not stored:
         return [_check("accords", UNAVAILABLE, "none shown on the page")]
@@ -306,6 +316,7 @@ def compare_perfume(record, shown, cleaned_charts, file_problem, url_id):
     checks = compare_identity(
         {"title": info["title"], "brand": record["brand"], "year": record["launch_year"],
          "title_source": info.get("title_source"), "brand_source": info.get("brand_source")}, shown)
+    checks += compare_audience(record.get("audience"), shown)
     checks += compare_accords(record["main_accords"], shown)
     checks += compare_notes(record["notes"], shown)
     checks += compare_perfumers(record.get("perfumers"), shown)

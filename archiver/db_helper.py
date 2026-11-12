@@ -128,7 +128,7 @@ class PerfumesDBHelper(_TableDB):
     table = "perfumes"
     columns = (
         "brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-        "gender", "when_to_wear", "perfumers",
+        "gender", "when_to_wear", "perfumers", "audience",
     )
 
 class NotesDBHelper(_TableDB):

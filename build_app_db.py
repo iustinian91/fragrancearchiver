@@ -67,6 +67,7 @@ def main(argv=None):
       year INTEGER,
       slug TEXT NOT NULL UNIQUE,
       popularity INTEGER DEFAULT 0,
+      audience TEXT CHECK(audience IN ('female','male','unisex')),   -- Fragrantica's own label (for women / men / women and men), not the votes
       source_url TEXT              -- the Fragrantica page the row was scraped from
     );
 
@@ -133,7 +134,7 @@ def main(argv=None):
         # Explicit rowid: perfume_fts is contentless, so search hits join back via perfume_fts.rowid = perfumes.rowid
         perf_rows.append((
             rowid, p["id"], p["brand"], p["name"], image, p.get("year"), p["slug"], p.get("popularity", 0),
-            p.get("url")
+            p.get("url"), p.get("audience")
         ))
 
         all_notes = []
@@ -160,7 +161,7 @@ def main(argv=None):
 
     with conn:
         cur.executemany(
-            "INSERT INTO perfumes(rowid,id,brand,name,image,year,slug,popularity,source_url) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO perfumes(rowid,id,brand,name,image,year,slug,popularity,source_url,audience) VALUES (?,?,?,?,?,?,?,?,?,?)",
             perf_rows
         )
         cur.executemany(

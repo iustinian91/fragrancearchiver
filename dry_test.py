@@ -320,7 +320,7 @@ def stage_perfume_scrape(report, args, workdir, crawl_urls):
     report.add(stage, "", "scraper finished", PASS if code == 0 else FAIL, "exit code {}".format(code))
     if code:
         return
-    columns = "brand, perfume, launch_year, main_accords, notes, longevity, sillage, gender, when_to_wear, perfumers"
+    columns = "brand, perfume, launch_year, main_accords, notes, longevity, sillage, gender, when_to_wear, perfumers, audience"
     raw, progress = table_rows("perfumes.sqlite", "perfumes", columns)
     names = columns.split(", ")
     records = []

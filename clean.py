@@ -294,6 +294,7 @@ def clean(input_file=None, output_file=None, report=False, keep_unnamed=False):
             "name": name,
             "brand": brand,
             "year": year,
+            "audience": p.get("audience") if p.get("audience") in ("female", "male", "unisex") else None,
             "image": _best_image(p),
             "url": p.get("url") or None,    # the Fragrantica page it came from
             "main_accords": main_accords,

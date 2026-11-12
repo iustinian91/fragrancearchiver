@@ -23,7 +23,7 @@ FIELDS = ("launch_year", "main_accords", "notes", "longevity", "sillage", "gende
 
 
 COLUMNS = ("brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-           "gender", "when_to_wear", "perfumers", "url", "page_id")
+           "gender", "when_to_wear", "perfumers", "url", "page_id", "audience")
 
 
 def load(db):
@@ -135,6 +135,9 @@ def main():
     for i, field in enumerate(FIELDS):
         count = sum(1 for r in rows if present(r[2 + i]))
         print("  {:<13}{:>7} {:>6.1f}%".format(field, count, 100 * count / n))
+    with_audience = sum(1 for r in rows if r[12])
+    print("  {:<13}{:>7} {:>6.1f}%   (Fragrantica's own for-women/for-men label)".format(
+        "audience", with_audience, 100 * with_audience / n))
     zero = {field: sum(1 for r in rows if zero_vote(r[2 + i]))
             for i, field in enumerate(FIELDS) if field in ("longevity", "sillage", "gender", "when_to_wear")}
     print("  charts nobody has voted on (stored as zeros, not counted above): " +

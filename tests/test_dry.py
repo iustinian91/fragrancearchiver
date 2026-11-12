@@ -31,7 +31,7 @@ shown = json.loads((ROOT / "tests/fixtures/oracle_black_orchid.json").read_text(
 tree = html.fromstring((ROOT / "tests/fixtures/performance_cards_black_orchid.html").read_text(encoding="utf-8"))
 charts = ps.page_charts(tree)
 record = {
-    "brand": "Tom Ford", "launch_year": "2006",
+    "brand": "Tom Ford", "launch_year": "2006", "audience": "female",
     "perfume": {"title": "Black Orchid", "image": "o.1018.jpg", "title_source": "page", "brand_source": "page"},
     "main_accords": shown["accords"],
     "notes": {k: shown["notes"][k] for k in ("top", "middle", "base")},
@@ -60,6 +60,15 @@ def broken(mutate, expect):
     mutate(rec, sh, ch)
     result = statuses(rec, sh, ch)
     assert result[expect] == so.FAIL, (expect, result[expect])
+
+
+# the official label (Fragrantica's "for women" classification) is compared with the page heading
+broken(lambda rec, sh, ch: rec.update(audience="unisex"), "audience")      # the votes say unisex; the label says female
+broken(lambda rec, sh, ch: rec.update(audience=None), "audience")
+broken(lambda rec, sh, ch: sh.update(audience="male"), "audience")
+none_both = copy.deepcopy(record); none_both["audience"] = None
+no_label = copy.deepcopy(shown); no_label["audience"] = None
+assert statuses(none_both, no_label)["audience"] == so.UNAVAILABLE
 
 
 # each kind of mistake is caught by the check that should catch it
