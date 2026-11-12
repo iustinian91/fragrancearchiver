@@ -41,8 +41,7 @@ assert [u for u, _ in client.downloads] == [
     "https://fimgs.net/mdimg/sastojci/t.75.jpg?1733161295",
     "https://www.fragrantica.com/mdimg/sastojci/t2.75.jpg?1733161288",   # a relative link on the page
     "https://www.fragrantica.com/mdimg/sastojci/t3.75.jpg?1733161293"], client.downloads
-# the layout used until 2022 still works
+# a page without note photos (the old layout's plain thumbnails do not count) gives none
 old = html.fromstring("<html><body><h1>Amber</h1><h3>Photos</h3><div><div><img src='f.9.jpg'></div></div></body></html>")
-assert ns.note_photo_urls(old, "https://www.fragrantica.com/notes/Amber-9.html") == [
-    "https://www.fragrantica.com/notes/f.9.jpg"]
-print("note page: title and the 3 photos OK; perfume thumbnails ignored; old layout still read")
+assert ns.note_photo_urls(old, "https://www.fragrantica.com/notes/Amber-9.html") == []
+print("note page: title and the 3 photos OK; perfume thumbnails ignored")

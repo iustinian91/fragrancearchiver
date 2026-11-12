@@ -21,12 +21,8 @@ NOTE_PHOTO = re.compile(r"/mdimg/sastojci/[a-z]\d*\.\d+\.jpe?g$", re.IGNORECASE)
 
 def note_photo_urls(tree, page_url):
     """Absolute URLs of the note's photos, in page order, without repeats."""
-    sources = tree.xpath("//img/@src")
-    if not any(NOTE_PHOTO.search(urlsplit(src).path) for src in sources):
-        sources = tree.xpath("//h3/following-sibling::div/div/img/@src")  # layout used until 2022
-        return list(dict.fromkeys(urljoin(page_url, src) for src in sources))
     return list(dict.fromkeys(
-        urljoin(page_url, src) for src in sources if NOTE_PHOTO.search(urlsplit(src).path)
+        urljoin(page_url, src) for src in tree.xpath("//img/@src") if NOTE_PHOTO.search(urlsplit(src).path)
     ))
 
 

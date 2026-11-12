@@ -29,12 +29,6 @@ YEAR = r"(1[5-9]\d\d|20\d\d)"
 EDGE_PUNCTUATION = " ,;:|•–—-\"“”"
 
 
-def note_titles(tree, label):
-    """Note names listed under a pyramid heading such as 'Top Notes'."""
-    imgs = tree.xpath("//p[b/text()='{}']/span[@class='rtgNote']/img".format(label))
-    return [img.get("title") for img in imgs] or None
-
-
 def _labels(texts):
     """Whitespace-normalised, non-empty, de-duplicated strings in their original order."""
     seen, ordered = set(), []
@@ -64,11 +58,6 @@ def page_main_accords(tree):
         "//h6[normalize-space()='main accords']/following-sibling::div[1]"
         "//span[contains(@class, 'truncate')]/text()"
     ))
-    if not accords:  # layout used until 2022
-        accords = [
-            accord for accord in tree.xpath("//div[@id='prettyPhotoGallery']/div/div/span/text()")
-            if accord not in ("Videos", "Pictures", "main accords")
-        ]
     return accords or None
 
 
@@ -106,17 +95,6 @@ def page_notes(tree):
         if set(levels) <= set(PYRAMID_LEVELS):
             return {key: levels.get(key) or None for key in PYRAMID_LEVELS}
         return {"general": [name for names in levels.values() for name in names]}
-
-    # layout used until 2022
-    captions = tree.xpath("//h3/text()")
-    if "Fragrance Notes" in captions:
-        return {"general": [tag.get("title") for tag in tree.xpath("//span[@class='rtgNote']/img")]}
-    if "Perfume Pyramid" in captions:
-        return {
-            "top": note_titles(tree, "Top Notes"),
-            "middle": note_titles(tree, "Middle Notes"),
-            "base": note_titles(tree, "Base Notes"),
-        }
     return None
 
 
