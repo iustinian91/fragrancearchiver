@@ -4,7 +4,7 @@ import argparse
 import os
 import random
 from collections import Counter, deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from time import monotonic, sleep
@@ -31,8 +31,15 @@ MAX_CONSECUTIVE_BLOCKS = 3    # a 429 or a challenge this many times in a row en
 BLOCK_WINDOW = 20             # the last 20 fetches are watched ...
 MAX_BLOCKS_IN_WINDOW = 5      # ... and 5 blocks among them end the run, even with successes in between
 MAX_SLOWDOWN = 8.0            # the delays never grow beyond 8 times their normal length
+DEFAULT_BLOCK_REST_MINUTES = 60   # --rest-after-block default: how long a run rests when the site keeps blocking it
+MAX_BLOCK_RESTS = 3           # automatic rests in one run; after that a block ends the run as before
 CLEAN_FETCHES_TO_SPEED_UP = 50   # blocks-free fetches before the delays are halved again
 PROFILE_DIR = None            # browser profile folder: None = not decided yet, "" = fresh browser each run
+# Session settings, filled in from the command line (see apply_browser_arguments). A client made
+# without them (the dry test, the offline tests) has no limit and stops at the first block.
+SESSION_MAX_SECONDS = None    # --max-hours: stop starting new pages after this long
+SESSION_MAX_PAGES = None      # --max-pages: stop after this many page loads
+BLOCK_REST_SECONDS = 0        # --rest-after-block: 0 = a block ends the run
 RATE_LIMIT_COOLDOWN_SECONDS = 300
 RETRY_AFTER_BUFFER_SECONDS = 2
 SCROLL_STEP_WAIT_MS = 500
@@ -87,6 +94,17 @@ class PageGoneError(RuntimeError):
 class TooManyBlocksError(RuntimeError):
     """Raised when the site has answered MAX_CONSECUTIVE_BLOCKS requests in a row with a rate
     limit (HTTP 429) or a challenge: carrying on would only make things worse."""
+
+
+class SessionLimitReached(Exception):
+    """The --max-hours or --max-pages limit was reached. Not an error: progress is saved and a
+    rerun carries on. Deliberately not a RuntimeError, so the `except FETCH_ERRORS` handlers
+    cannot swallow it."""
+
+
+# Exit status of a script that stopped at a session limit: not 0 (the work is not finished, so a
+# chain such as `a.py && b.py` must not go on), and not 1 (nothing went wrong).
+EXIT_SESSION_LIMIT = 3
 
 
 class CloudflareChallengeError(RuntimeError):
@@ -190,8 +208,30 @@ def matching_urls(tree, base_url, pattern):
     return list(dict.fromkeys(urls))
 
 
+def _positive_float(text):
+    value = float(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be more than 0")
+    return value
+
+
+def _positive_int(text):
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
+def _not_negative_float(text):
+    value = float(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError("must not be negative")
+    return value
+
+
 def add_browser_arguments(parser):
-    """The command-line options every crawler shares: ad blocking and the browser profile."""
+    """The command-line options every crawler shares: ad blocking, the browser profile, session
+    limits and the rest after a block."""
     parser.add_argument(
         "--no-adblock", action="store_true", dest="no_adblock",
         help="load everything the page asks for. By default requests to every host except "
@@ -204,16 +244,35 @@ def add_browser_arguments(parser):
     parser.add_argument(
         "--no-profile", action="store_true", dest="no_profile",
         help="start every run with a fresh browser instead")
+    parser.add_argument(
+        "--max-hours", type=_positive_float, metavar="H", dest="max_hours",
+        help="stop after about H hours (counting rests): no new page is started once the time is "
+             "up. Progress is saved; exit status {} means 'stopped at the limit, run again'".format(
+                 EXIT_SESSION_LIMIT))
+    parser.add_argument(
+        "--max-pages", type=_positive_int, metavar="N", dest="max_pages",
+        help="stop after N pages (each page counts once, scraped or skipped, retries and images "
+             "do not); "
+             "exit status {} as for --max-hours".format(EXIT_SESSION_LIMIT))
+    parser.add_argument(
+        "--rest-after-block", type=_not_negative_float, metavar="MINUTES", dest="rest_after_block",
+        default=DEFAULT_BLOCK_REST_MINUTES,
+        help="when the site blocks the run (a rate limit or challenge several times in a row), rest "
+             "this long and carry on, up to {} times per run, instead of stopping. 0 stops at the "
+             "first such block (default %(default)g)".format(MAX_BLOCK_RESTS))
 
 
 def apply_browser_arguments(args):
     """Turn those options into the module settings BrowserClient reads. Settings a caller made
     first (the dry test) are kept."""
-    global BLOCK_ADS, PROFILE_DIR
+    global BLOCK_ADS, PROFILE_DIR, SESSION_MAX_SECONDS, SESSION_MAX_PAGES, BLOCK_REST_SECONDS
     if args.no_adblock:
         BLOCK_ADS = False
     if PROFILE_DIR is None:
         PROFILE_DIR = "" if args.no_profile else args.profile
+    SESSION_MAX_SECONDS = None if args.max_hours is None else args.max_hours * 3600
+    SESSION_MAX_PAGES = args.max_pages
+    BLOCK_REST_SECONDS = args.rest_after_block * 60
 
 
 class BrowserClient:
@@ -231,6 +290,13 @@ class BrowserClient:
 
     _last_page_start = None    # when the last page request began (see _pace_request)
 
+    max_seconds = None         # session limits and the rest after a block (see the module settings)
+    max_pages = None
+    rest_seconds = 0
+    pages_started = 0          # page loads begun in this run (what --max-pages counts)
+    rests_taken = 0
+    _session_start = None
+
     def __init__(self, headless=HEADLESS, timeout_ms=REQUEST_TIMEOUT_MS, block_ads=None,
                  allowed_hosts=None, profile_dir=None):
         self.profile_dir = PROFILE_DIR if profile_dir is None else profile_dir
@@ -241,12 +307,16 @@ class BrowserClient:
         self.requests_allowed = Counter()    # host -> requests let through (with ad blocking on)
         self.requests_blocked = Counter()    # host -> requests aborted
         self.requests_skipped = Counter()    # resource type -> requests dropped on allowed hosts
+        self.max_seconds = SESSION_MAX_SECONDS
+        self.max_pages = SESSION_MAX_PAGES
+        self.rest_seconds = BLOCK_REST_SECONDS
         self._playwright = None
         self.browser = None
         self.context = None
         self.page = None
 
     def __enter__(self):
+        self._session_start = monotonic()
         self._playwright = sync_playwright().start()
         try:
             if self.profile_dir:
@@ -571,7 +641,78 @@ class BrowserClient:
         except PatchrightError:
             pass
 
-    def fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
+    # ---- session limits and the rest after a block -------------------------------------------
+    def _elapsed(self):
+        if self._session_start is None:
+            self._session_start = monotonic()
+        return monotonic() - self._session_start
+
+    def _time_is_up(self):
+        return self.max_seconds is not None and self._elapsed() >= self.max_seconds
+
+    def _limit_message(self, what):
+        return "{} after {} page(s) and {:.1f} hours".format(what, self.pages_started, self._elapsed() / 3600)
+
+    def _check_session_limit(self):
+        """Called before each new page: raise SessionLimitReached once --max-pages or --max-hours is used up."""
+        if self.max_pages is not None and self.pages_started >= self.max_pages:
+            raise SessionLimitReached(self._limit_message("reached the limit of {} pages (--max-pages)".format(
+                self.max_pages)))
+        self._check_time_limit()
+
+    def _check_time_limit(self):
+        if self._time_is_up():
+            raise SessionLimitReached(self._limit_message("reached the time limit of {:g} hours (--max-hours)".format(
+                self.max_seconds / 3600)))
+
+    def _rest_after_block(self, error):
+        """The site has blocked the run again and again. With --rest-after-block, rest and go on
+        (up to MAX_BLOCK_RESTS times) instead of stopping. Returns True when the rest was taken."""
+        if not self.rest_seconds or self.rests_taken >= MAX_BLOCK_RESTS:
+            return False
+        minutes = self.rest_seconds / 60
+        if self.max_seconds is not None and self._elapsed() + self.rest_seconds >= self.max_seconds:
+            raise SessionLimitReached(self._limit_message(
+                "blocked by the site, and a rest of {:g} minutes would go past the time limit (--max-hours); "
+                "stopping here, so wait a while before rerunning".format(minutes)))
+        self.rests_taken += 1
+        reason = str(error).split(";")[0]
+        print("Blocked: {}.\nResting {:g} minutes (automatic rest {} of {}); carrying on at about {}.".format(
+            reason, minutes, self.rests_taken, MAX_BLOCK_RESTS,
+            (datetime.now() + timedelta(seconds=self.rest_seconds)).strftime("%H:%M")), flush=True)
+        sleep(self.rest_seconds)
+        # A fresh start for the block counters; the slowdown stays up and fades after clean fetches.
+        self.block_streak = 0
+        self.clean_streak = 0
+        self._recent().clear()
+        self._last_page_start = None
+        return True
+
+    def fetch_tree(self, *args, **kwargs):
+        """Load a page and return its parsed tree (see _fetch_tree for the options). Stops with
+        SessionLimitReached at --max-pages / --max-hours; when the site keeps blocking the run it
+        rests first (--rest-after-block) and tries the same page again."""
+        self._check_session_limit()
+        self.pages_started += 1
+        while True:
+            try:
+                return self._fetch_tree(*args, **kwargs)
+            except TooManyBlocksError as error:
+                if not self._rest_after_block(error):
+                    raise
+                self._check_time_limit()       # the rest may have used up the time
+
+    def download_image(self, image_url, destination):
+        """Save an image (see _download_image). An image belongs to the page just read, so no
+        session limit applies, but a run of blocks rests like a page does."""
+        while True:
+            try:
+                return self._download_image(image_url, destination)
+            except TooManyBlocksError as error:
+                if not self._rest_after_block(error):
+                    raise
+
+    def _fetch_tree(self, url, timeout_ms=None, wait_for=None, scroll_for=None, stop_at=None,
                    lazy_boxes=None, expect_boxes=0, allow_partial=False):
         """Navigate, retry HTTP 429 after the required cooldown, and parse HTML.
 
@@ -656,7 +797,7 @@ class BrowserClient:
             self._note_ok()
             return html.fromstring(self.page.content())
 
-    def download_image(self, image_url, destination):
+    def _download_image(self, image_url, destination):
         """Download an image, retrying HTTP 429 after the required cooldown.
 
         Returns True when the file is on disk afterwards. A picture that cannot be had (HTTP

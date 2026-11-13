@@ -301,8 +301,8 @@ by both scrapers.
   that points to a changed layout, not a bad page.
 - A designer page too long to scroll to the end keeps what it found and is listed in
   `data/manifests/perfumes_manifest.short.txt`; the crawl goes on.
-- Repeated blocks end the run: 3 in a row, or 5 within the last 20 fetches. A `Retry-After` longer
-  than 15 minutes also ends it.
+- Repeated blocks (3 in a row, or 5 within the last 20 fetches, or a `Retry-After` longer than
+  15 minutes) make the run rest and carry on, up to 3 times (`--rest-after-block`); then it stops.
 
 ### What each row records
 
@@ -317,8 +317,21 @@ image's file name. The chart levels live in one place, `charts.py`.
 
 - **Slowdown:** a rate limit (HTTP 429) or a challenge doubles every pause before a request, up to
   8 times the normal length; 50 requests in a row without one halve it again.
-- **Stopping:** three blocks in a row end the run ("the site blocked 3 requests in a row"). Progress
-  is saved; wait an hour or more and rerun.
+- **Resting and stopping:** three blocks in a row ("the site blocked 3 requests in a row"), or a
+  `Retry-After` over 15 minutes, make the run rest (see below). After the third rest, or with
+  `--rest-after-block 0`, it stops instead. Progress is saved; wait an hour or more and rerun.
+- **Sessions and rests:** `--max-hours H` and `--max-pages N` (on every crawler and scraper) stop
+  cleanly once the time or the number of page loads is used up; no new page is started, progress is
+  saved, and the exit status is 3 ("stopped at the limit, run again"). Use them to work in sessions
+  instead of one nonstop run, for example 6 hours of scraping, 2 hours off:
+
+  ```bash
+  while python perfumes_scraper.py --max-hours 6; [ $? -eq 3 ]; do sleep 7200; done
+  ```
+
+  If the site blocks the run several times in a row, the run rests `--rest-after-block MINUTES`
+  (default 60) and carries on, at most 3 times per run; `--rest-after-block 0` stops at the first
+  such block instead. A rest that would go past `--max-hours` ends the run (status 3) instead.
 - **Browser profile:** the crawlers keep the browser's cookies in `browser_profile/` between runs, so
   a challenge cleared once stays cleared. `--profile DIR` picks another folder and `--no-profile`
   starts fresh. The dry test always starts fresh.

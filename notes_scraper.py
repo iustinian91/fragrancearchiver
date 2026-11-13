@@ -7,7 +7,9 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 from archiver import browser_client, paths
-from archiver.browser_client import FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError
+from archiver.browser_client import (
+    EXIT_SESSION_LIMIT, FETCH_ERRORS, MAX_UNREADABLE_IN_A_ROW, BrowserClient, PageGoneError, SessionLimitReached,
+)
 from archiver.db_helper import NotesDBHelper
 from archiver.urls import read_categories, read_manifest
 
@@ -91,6 +93,7 @@ def main(argv=None):
     )
 
     skipped_gone, unreadable, unreadable_in_a_row = [], [], 0
+    stopped_at_limit = None
     try:
         with BrowserClient() as client:
             for position, url in enumerate(pending, start=1):
@@ -123,6 +126,8 @@ def main(argv=None):
                     "completed_total": len(completed),
                     "note": note_title,
                 }, flush=True)
+    except SessionLimitReached as exc:
+        stopped_at_limit = exc
     except (*FETCH_ERRORS, ValueError) as exc:
         print(
             "Scrape paused: {}. {} URLs are recorded as complete; rerun to continue "
@@ -139,6 +144,10 @@ def main(argv=None):
     if unreadable:
         print("{} note page(s) could not be read (listed in {}); they are tried again on the next run.".format(
             len(unreadable), FAILED_FILE))
+    if stopped_at_limit:
+        print("Stopped: {}. {} URLs are recorded as complete; rerun to continue (exit status {}).".format(
+            stopped_at_limit, len(completed), EXIT_SESSION_LIMIT))
+        return EXIT_SESSION_LIMIT
     print("Completed: {} note URLs processed.".format(len(completed)))
     return 0
 

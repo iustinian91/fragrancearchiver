@@ -13,9 +13,11 @@ from archiver.urls import canonical_url, read_manifest, too_small_to_replace
 from archiver import browser_client, paths
 from archiver.browser_client import (
     BASE_URL,
+    EXIT_SESSION_LIMIT,
     FETCH_ERRORS,
     BrowserClient,
     CloudflareChallengeError,
+    SessionLimitReached,
     matching_urls,
 )
 
@@ -300,6 +302,11 @@ def main(argv=None):
         print("Completed: saved {} unique perfume URLs to {}.".format(len(seen), OUTPUT_PATH))
         return 0
 
+    except SessionLimitReached as exc:
+        # Every finished designer is already saved with its position, so a rerun carries on here.
+        print("Stopped: {}. Progress remains in {} and {}; rerun to continue (exit status {}).".format(
+            exc, TEMP_OUTPUT_PATH, STATE_PATH, EXIT_SESSION_LIMIT))
+        return EXIT_SESSION_LIMIT
     except CloudflareChallengeError as exc:
         print("Cloudflare challenge detected; crawl paused without advancing the checkpoint.")
         print("{}".format(exc))

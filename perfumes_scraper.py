@@ -10,7 +10,9 @@ from lxml import html
 
 from archiver import browser_client, paths
 from archiver.charts import GENDER_KEYS, LONGEVITY_KEYS, SILLAGE_KEYS, WHEN_KEYS
-from archiver.browser_client import FETCH_ERRORS, BrowserClient, PageGoneError
+from archiver.browser_client import (
+    EXIT_SESSION_LIMIT, FETCH_ERRORS, BrowserClient, PageGoneError, SessionLimitReached,
+)
 from archiver.db_helper import PerfumesDBHelper
 from archiver.urls import read_manifest
 
@@ -463,6 +465,7 @@ def main(argv=None):
     scraped = 0
     incomplete, newly_gone, unreadable = [], [], []
     skipped_in_a_row = 0
+    stopped_at_limit = None
 
     try:
         with BrowserClient() as client:
@@ -524,6 +527,8 @@ def main(argv=None):
                     "year": record[2],
                     "names_from": "{}/{}".format(perfume["title_source"], perfume["brand_source"]),
                 }, flush=True)
+    except SessionLimitReached as exc:
+        stopped_at_limit = exc        # not an error: report as usual, then say where it stopped
     except (*FETCH_ERRORS, ValueError) as exc:
         print(
             "Scrape paused: {}. {} URLs are recorded as complete; rerun to continue "
@@ -554,6 +559,10 @@ def main(argv=None):
     if unreadable:
         print("{} page(s) could not be read (listed in {}); they are tried again on the next run.".format(
             len(unreadable), FAILED_FILE))
+    if stopped_at_limit:
+        print("Stopped: {}. {} URLs are recorded as complete; rerun to continue (exit status {}).".format(
+            stopped_at_limit, len(completed), EXIT_SESSION_LIMIT))
+        return EXIT_SESSION_LIMIT
     print("Completed: {} perfume URLs processed.".format(len(completed)))
     return 0
 
