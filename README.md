@@ -2,7 +2,13 @@
 
 A Python project for collecting fragrance specifications.
 
-Based on the 2019 work of Ehsan Moradi; see [LICENSE](LICENSE).
+> **Disclaimer.** This fork ships empty: it holds no collected information, databases, manifests or
+> images. Everything is created by running the scripts yourself. It is for testing only, not for
+> commercial or malicious use. Be aware of this and use it with caution.
+>
+> It was built to be as ethical as possible: it drives a visible browser (nothing hidden), with no stealth
+> settings, CAPTCHA solvers, proxy rotation or automated challenge bypass. It paces its requests, and slows
+> down, rests or stops when the site pushes back.
 
 ## Setup
 
@@ -335,3 +341,7 @@ image's file name. The chart levels live in one place, `charts.py`.
 - **Browser profile:** the crawlers keep the browser's cookies in `browser_profile/` between runs, so
   a challenge cleared once stays cleared. `--profile DIR` picks another folder and `--no-profile`
   starts fresh. The dry test always starts fresh.
+
+---
+
+Based on the 2019 work of Ehsan Moradi; see [LICENSE](https://github.com/iustinian91/fragrancearchiver/blob/master/LICENSE).
