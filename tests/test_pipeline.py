@@ -37,7 +37,20 @@ bad = html.fromstring(html.tostring(tree).decode().replace(">unisex<", ">neutral
 assert ps.page_charts(bad)["gender"] is None
 print("charts extracted OK")
 
+# ---- the overall rating: "Perfume rating 3.88 out of 5 with 33,049 votes" ----
+rated = html.fromstring((ROOT / "tests/fixtures/rating_black_orchid.html").read_text(encoding="utf-8"))
+assert ps.page_rating(rated) == ("3.88", "33049")        # the count comes from the content attribute, not "33,049"
+unrated = html.fromstring((ROOT / "tests/fixtures/rating_none_bellini.html").read_text(encoding="utf-8"))
+assert ps.page_rating(unrated) == (None, None)
+assert ps.page_rating(html.fromstring("<html><body><p itemprop='aggregateRating'><span itemprop='ratingValue'>4.0</span>"
+                                      "<span itemprop='ratingCount'>1,065</span></p></body></html>")) == ("4", "1065")
+assert ps.page_rating(html.fromstring("<html><body><p itemprop='aggregateRating'><span itemprop='ratingValue'>n/a</span>"
+                                      "</p></body></html>")) == (None, None)
+print("rating extracted OK")
+
 import clean as _clean  # noqa: E402
+assert _clean._to_rating("3.88") == 3.88 and _clean._to_rating(None) is None and _clean._to_rating("7") is None
+assert _clean._to_rating("abc") is None and _clean._to_rating("0") == 0.0
 assert _clean._parse_perfumers('[{"name": "David  Apel", "slug": "David_Apel"}, {"slug": "x"}]') == [{"name": "David Apel", "slug": "David_Apel"}]
 assert _clean._parse_perfumers("null") == [] and _clean._parse_perfumers(None) == []
 assert _clean._parse_notes('{"general": ["Milk", "Caramel"]}') == {"top": [], "middle": [], "base": [], "general": ["Milk", "Caramel"]}
@@ -47,8 +60,9 @@ print("flat note lists keep their own general group OK")
 record = ("Tom Ford", json.dumps({"title": "Black Orchid", "image": "o.1018.jpg", "title_source": "page", "brand_source": "page"}),
           "2006", json.dumps(["warm spicy"]), json.dumps({"top": ["Truffle"], "middle": ["Orchid"], "base": ["Patchouli"]}),
           json.dumps(charts["longevity"]), json.dumps(charts["sillage"]), json.dumps(charts["gender"]),
-          json.dumps(charts["when_to_wear"]), json.dumps([{"name": "David Apel", "slug": "David_Apel"}]), "female")
-empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null", "[]", None)
+          json.dumps(charts["when_to_wear"]), json.dumps([{"name": "David Apel", "slug": "David_Apel"}]), "female",
+          *ps.page_rating(rated))
+empty = ("A", json.dumps({"title": "Nothing", "title_source": "page", "brand_source": "page"}), None, "null", "null", "null", "null", "null", "null", "[]", None, *ps.page_rating(unrated))
 
 with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
@@ -71,8 +85,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert next(x for x in data if x["name"] == "Nothing")["charts"] == {}
     # the official label is kept next to the votes (which say unisex): stored, cleaned, and in app.db
     assert p["audience"] == "female" and next(x for x in data if x["name"] == "Nothing")["audience"] is None
+    # the rating and how many people gave it: numbers in clean and app.db, empty for an unrated perfume
+    nothing = next(x for x in data if x["name"] == "Nothing")
+    assert p["rating"] == 3.88 and p["rating_votes"] == 33049 and nothing["rating"] is None and nothing["rating_votes"] is None
     build_app_db.main([])
     conn = sqlite3.connect("app.db")
+    assert conn.execute("SELECT name, rating, rating_votes FROM perfumes ORDER BY name").fetchall() == [
+        ("Black Orchid", 3.88, 33049), ("Nothing", None, None)]
+    assert conn.execute("SELECT typeof(rating), typeof(rating_votes) FROM perfumes WHERE name='Black Orchid'").fetchone() == ("real", "integer")
     rows = conn.execute("SELECT chart, option, position, votes, share FROM perfume_votes ORDER BY chart, position").fetchall()
     assert len(rows) == 5 + 4 + 5 + 6 and all(0 <= r[4] <= 1 for r in rows)
     assert conn.execute("SELECT COUNT(*) FROM notes WHERE kind IN ('top','middle','base')").fetchone()[0] == 3
@@ -82,6 +102,19 @@ with tempfile.TemporaryDirectory() as tmp:
 
 import sqlite3  # noqa: E402
 import tempfile  # noqa: E402
+
+# ---- a database made before the rating columns existed gets them added, keeping its rows ----
+with tempfile.TemporaryDirectory() as tmp:
+    old = sqlite3.connect(os.path.join(tmp, "old.sqlite"))
+    old.execute("CREATE TABLE perfumes (brand TEXT, perfume TEXT, launch_year TEXT, main_accords TEXT, notes TEXT, longevity TEXT, "
+                "sillage TEXT, gender TEXT, when_to_wear TEXT, perfumers TEXT, audience TEXT, url TEXT, page_id TEXT)")
+    old.execute("INSERT INTO perfumes (brand, url) VALUES ('Tom Ford', 'https://www.fragrantica.com/perfume/Tom-Ford/Black-Orchid-1018.html')")
+    old.commit(); old.close()
+    migrated = db_helper.PerfumesDBHelper(os.path.join(tmp, "old.sqlite"))
+    migrated.setup(); migrated.setup()                        # setting up twice is harmless
+    assert migrated.conn.execute("SELECT brand, rating, rating_votes FROM perfumes").fetchall() == [("Tom Ford", None, None)]
+    migrated.close()
+print("older databases gain the rating columns OK")
 
 from archiver import db_helper  # noqa: E402
 

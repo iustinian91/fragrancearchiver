@@ -27,6 +27,11 @@ class _TableDB:
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS {} ({})".format(self.table, definitions)
         )
+        # A database made before a column existed gets it added (empty), so older data keeps working.
+        have = {row[1] for row in self.conn.execute("PRAGMA table_info({})".format(self.table))}
+        for column in every_column:
+            if column not in have:
+                self.conn.execute("ALTER TABLE {} ADD COLUMN {} TEXT".format(self.table, column))
         self.conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_{0}_url ON {0}(url)".format(self.table))
         self.conn.execute(
@@ -128,7 +133,7 @@ class PerfumesDBHelper(_TableDB):
     table = "perfumes"
     columns = (
         "brand", "perfume", "launch_year", "main_accords", "notes", "longevity", "sillage",
-        "gender", "when_to_wear", "perfumers", "audience",
+        "gender", "when_to_wear", "perfumers", "audience", "rating", "rating_votes",
     )
 
 class NotesDBHelper(_TableDB):

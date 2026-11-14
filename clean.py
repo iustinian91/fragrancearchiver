@@ -92,6 +92,15 @@ def _to_int(v):
     return None
 
 
+def _to_rating(v):
+    """A rating from 0 to 5 as a float, or None (also for anything outside that range)."""
+    try:
+        r = float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+    return r if 0 <= r <= 5 else None
+
+
 def _json_or_dict(v):
     """A dict, or the dict encoded in a JSON string; {} for anything else (incl. 'null')."""
     if isinstance(v, dict):
@@ -295,6 +304,8 @@ def clean(input_file=None, output_file=None, report=False, keep_unnamed=False):
             "brand": brand,
             "year": year,
             "audience": p.get("audience") if p.get("audience") in ("female", "male", "unisex") else None,
+            "rating": _to_rating(p.get("rating")),            # average, 0 to 5, None if unrated
+            "rating_votes": _to_int(p.get("rating_votes")),   # how many people rated it
             "image": _best_image(p),
             "url": p.get("url") or None,    # the Fragrantica page it came from
             "main_accords": main_accords,

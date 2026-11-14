@@ -260,6 +260,24 @@ def page_audience(tree):
     return AUDIENCES[match.group(1)] if match else None
 
 
+def page_rating(tree):
+    """The page's overall rating as (rating, votes) strings, e.g. ("3.88", "33049"), from the
+    schema.org block "Perfume rating 3.88 out of 5 with 33,049 votes". (None, None) when the page
+    shows no rating, which is the case for perfumes nobody has rated."""
+    block = tree.xpath("//*[@itemprop='aggregateRating']")
+    if not block:
+        return None, None
+    value = " ".join(" ".join(block[0].xpath(".//*[@itemprop='ratingValue']//text()")).split())
+    count = (block[0].xpath(".//*[@itemprop='ratingCount']/@content") or [""])[0].strip()
+    if not count:
+        count = "".join(block[0].xpath(".//*[@itemprop='ratingCount']//text()")).replace(",", "").strip()
+    try:
+        value = "{:g}".format(float(value))
+    except ValueError:
+        value = None
+    return value, (count if count.isdigit() else None)
+
+
 def heading_brand(tree):
     """The brand as the page's heading spells it, for pages whose URL carries an older brand
     name ("A Lab on Fire" in the URL, "What We Do Is Secret" on the page): the designer link
@@ -401,7 +419,7 @@ def scrape_perfume(client, url):
         brand, json.dumps(perfume), launch_year(page_title, tree), json.dumps(main_accords),
         json.dumps(notes), json.dumps(charts["longevity"]), json.dumps(charts["sillage"]),
         json.dumps(charts["gender"]), json.dumps(charts["when_to_wear"]),
-        json.dumps(page_perfumers(tree)), page_audience(tree),
+        json.dumps(page_perfumers(tree)), page_audience(tree), *page_rating(tree),
     )
     return perfume, record
 

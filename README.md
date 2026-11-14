@@ -160,6 +160,11 @@ heading) is stored as `audience` (`female`, `male` or `unisex`) and carried into
 and `app.db`. It is an editorial label, separate from the gender vote chart, and the two can disagree:
 Black Orchid is "for women", but most voters say unisex.
 
+The page's overall rating ("Perfume rating 3.88 out of 5 with 33,049 votes") is stored as `rating` and
+`rating_votes`, and carried into `perfumes_clean.json` and the `perfumes` table of `app.db` (`REAL` and
+`INTEGER`, empty for a perfume nobody has rated). A database from before these columns existed gets them
+added, empty, the next time the scraper opens it; the pages scraped earlier need scraping again to fill them.
+
 ### Trying it before a long crawl
 
 Check the extraction on a few pages with a scratch database first (`--limit` counts pages still to do):
